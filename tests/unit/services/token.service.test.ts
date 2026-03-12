@@ -14,9 +14,10 @@ describe('Token Service', () => {
       expect(token.split('.')).toHaveLength(3); // JWT has 3 parts
     });
 
-    it('should generate different tokens for same payload', () => {
+    it('should generate different tokens for same payload', async () => {
       const token1 = generateJWT(testUserId, testEmail);
-      // Wait a tiny bit to ensure different iat timestamp
+      // Wait 1000ms (1 second) to ensure different iat timestamp
+      await new Promise(resolve => setTimeout(resolve, 1000));
       const token2 = generateJWT(testUserId, testEmail);
       
       // Tokens will be different due to iat (issued at) timestamp
