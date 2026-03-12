@@ -1,0 +1,65 @@
+{
+  "name": "auth-api",
+  "version": "1.0.0",
+  "description": "TypeScript/Node.js/Express authentication API with DynamoDB",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:prod": "node scripts/production-check.js && node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "create-tables": "node scripts/create-dynamodb-tables.js",
+    "create-tables:local": "node scripts/create-dynamodb-tables.js local",
+    "seed-fruits": "node scripts/seed-fruits.js",
+    "docker:build": "docker build -t auth-api:latest .",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "lint": "tsc --noEmit",
+    "clean": "if exist dist rmdir /s /q dist",
+    "prebuild": "npm run clean && npm run lint"
+  },
+  "keywords": [
+    "authentication",
+    "typescript",
+    "express",
+    "dynamodb",
+    "jwt"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.525.0",
+    "@aws-sdk/lib-dynamodb": "^3.525.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3",
+    "express-rate-limit": "^7.2.0",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1",
+    "winston": "^3.12.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.11.25",
+    "@types/supertest": "^7.2.0",
+    "@types/uuid": "^9.0.8",
+    "@vitest/coverage-v8": "^4.0.18",
+    "supertest": "^6.3.4",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.2",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
