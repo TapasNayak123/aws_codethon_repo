@@ -8,6 +8,7 @@ package-lock.json
 .env.production
 .env.*.local
 
+
 # Build output
 dist/
 build/
@@ -38,3 +39,6 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Doccuments
+.md
