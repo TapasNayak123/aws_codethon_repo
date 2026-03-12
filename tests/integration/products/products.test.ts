@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import request from 'supertest';
-import express from 'express';
-import productRoutes from '../../../src/routes/product.routes';
+import { createApp } from '../../../src/app';
 import { generateJWT } from '../../../src/services/token.service';
 
 // Mock DynamoDB
@@ -17,13 +16,11 @@ vi.mock('@aws-sdk/lib-dynamodb', () => ({
 }));
 
 describe('Products API Integration Tests', () => {
-  let app: express.Application;
+  let app: ReturnType<typeof createApp>;
   let validToken: string;
 
   beforeAll(() => {
-    app = express();
-    app.use(express.json());
-    app.use('/api/products', productRoutes);
+    app = createApp();
 
     // Generate valid JWT token for tests
     validToken = generateJWT('test-user-123', 'test@example.com');

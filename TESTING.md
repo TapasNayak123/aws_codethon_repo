@@ -119,23 +119,46 @@ npm run test:coverage
 
 ## Test Results
 
-Run `npm test` to see current test results:
+✅ **All tests passing successfully!**
 
 ```bash
 $ npm test
 
- ✓ tests/unit/services/password.service.test.ts (6 tests)
- ✓ tests/unit/services/token.service.test.ts (8 tests)
+ ✓ tests/unit/utils/date-validator.test.ts (9 tests)
  ✓ tests/unit/utils/email-validator.test.ts (6 tests)
  ✓ tests/unit/utils/password-validator.test.ts (8 tests)
- ✓ tests/unit/utils/date-validator.test.ts (7 tests)
- ✓ tests/unit/utils/response-formatter.test.ts (8 tests)
+ ✓ tests/unit/utils/response-formatter.test.ts (9 tests)
+ ✓ tests/unit/services/token.service.test.ts (8 tests)
+ ✓ tests/unit/services/password.service.test.ts (6 tests)
  ✓ tests/integration/auth/auth.test.ts (10 tests)
- ✓ tests/integration/products/products.test.ts (13 tests)
+ ✓ tests/integration/products/products.test.ts (14 tests)
 
 Test Files  8 passed (8)
-     Tests  66 passed (66)
+     Tests  70 passed (70)
+  Duration  ~13 seconds
 ```
+
+### Test Coverage Breakdown
+
+**Unit Tests - Utilities (23 tests)**:
+- ✅ date-validator: 9 tests
+- ✅ email-validator: 6 tests  
+- ✅ password-validator: 8 tests
+
+**Unit Tests - Services (14 tests)**:
+- ✅ password.service: 6 tests
+- ✅ token.service: 8 tests
+
+**Unit Tests - Response Formatter (9 tests)**:
+- ✅ response-formatter: 9 tests
+
+**Integration Tests - Auth API (10 tests)**:
+- ✅ Registration validation: 5 tests
+- ✅ Login validation: 5 tests
+
+**Integration Tests - Products API (14 tests)**:
+- ✅ Product creation validation: 10 tests
+- ✅ Product retrieval authentication: 4 tests
 
 ## Coverage Report
 

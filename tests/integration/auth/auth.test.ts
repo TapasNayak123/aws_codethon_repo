@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import request from 'supertest';
-import express from 'express';
-import authRoutes from '../../../src/routes/auth.routes';
+import { createApp } from '../../../src/app';
 
 // Mock DynamoDB
 vi.mock('@aws-sdk/lib-dynamodb', () => ({
@@ -16,12 +15,10 @@ vi.mock('@aws-sdk/lib-dynamodb', () => ({
 }));
 
 describe('Auth API Integration Tests', () => {
-  let app: express.Application;
+  let app: ReturnType<typeof createApp>;
 
   beforeAll(() => {
-    app = express();
-    app.use(express.json());
-    app.use('/api/auth', authRoutes);
+    app = createApp();
   });
 
   describe('POST /api/auth/register', () => {

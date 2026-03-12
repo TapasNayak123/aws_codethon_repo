@@ -10,7 +10,15 @@ export function isValidDate(dateString: string): boolean {
 
   // Parse and validate date
   const date = new Date(dateString);
-  return !isNaN(date.getTime());
+  if (isNaN(date.getTime())) {
+    return false;
+  }
+
+  // Verify the date components match (catches invalid dates like 2024-13-01)
+  const [year, month, day] = dateString.split('-').map(Number);
+  return date.getFullYear() === year && 
+         date.getMonth() === month - 1 && 
+         date.getDate() === day;
 }
 
 /**
