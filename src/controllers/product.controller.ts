@@ -3,6 +3,7 @@ import { validationResult } from 'express-validator';
 import * as ProductService from '../services/product.service';
 import { successResponse } from '../utils/response-formatter';
 import { ValidationError } from '../utils/error.util';
+import { logger } from '../utils/logger';
 
 /**
  * Create a new product or multiple products
@@ -13,7 +14,14 @@ export async function createProduct(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const requestId = (req as any).requestId;
+  const requestLogger = logger.child(requestId, {
+    endpoint: 'POST /api/products',
+  });
+
   try {
+    requestLogger.info('Processing product creation');
+
     // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -23,6 +31,8 @@ export async function createProduct(
         message: err.msg,
         value: err.type === 'field' ? err.value : undefined,
       }));
+      
+      requestLogger.warn('Product validation failed', { errors: formattedErrors });
       
       throw new ValidationError(
         `Product validation failed: ${formattedErrors.map(e => e.message).join(', ')}`
@@ -35,6 +45,8 @@ export async function createProduct(
     const isArray = Array.isArray(body);
     const productsData = isArray ? body : [body];
 
+    requestLogger.debug('Creating products', { count: productsData.length, isArray });
+
     // Create all products
     const createdProducts = [];
     for (const productData of productsData) {
@@ -46,10 +58,10 @@ export async function createProduct(
         imageUrl: productData.imageUrl,
       });
       createdProducts.push(product);
+      requestLogger.debug('Product created', { productId: product.productId, productName: product.productName });
     }
 
-    // Get request ID
-    const requestId = (req as any).requestId;
+    requestLogger.info('Products created successfully', { count: createdProducts.length });
 
     // Return appropriate response
     if (isArray) {
@@ -66,6 +78,9 @@ export async function createProduct(
       );
     }
   } catch (error) {
+    requestLogger.error('Product creation failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     next(error);
   }
 }
@@ -78,10 +93,17 @@ export async function getAllProducts(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const requestId = (req as any).requestId;
+  const requestLogger = logger.child(requestId, {
+    endpoint: 'GET /api/products',
+  });
+
   try {
+    requestLogger.info('Fetching all products');
+
     const products = await ProductService.getAllProducts();
 
-    const requestId = (req as any).requestId;
+    requestLogger.info('Products retrieved successfully', { count: products.length });
 
     res.status(200).json(
       successResponse(
@@ -91,6 +113,9 @@ export async function getAllProducts(
       )
     );
   } catch (error) {
+    requestLogger.error('Failed to retrieve products', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     next(error);
   }
 }
@@ -103,23 +128,38 @@ export async function getProductById(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const requestId = (req as any).requestId;
+  const requestLogger = logger.child(requestId, {
+    endpoint: 'GET /api/products/:productId',
+  });
+
   try {
+    requestLogger.info('Fetching product by ID');
+
     // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      requestLogger.warn('Validation failed', {
+        errors: errors.array().map(e => ({ field: e.type === 'field' ? e.path : 'body', message: e.msg })),
+      });
       throw new ValidationError(`Validation failed: ${errors.array()[0].msg}`);
     }
 
     const { productId } = req.params;
 
+    requestLogger.debug('Retrieving product', { productId });
+
     const product = await ProductService.getProductById(productId);
 
-    const requestId = (req as any).requestId;
+    requestLogger.info('Product retrieved successfully', { productId: product.productId });
 
     res.status(200).json(
       successResponse('Product retrieved successfully', product, requestId)
     );
   } catch (error) {
+    requestLogger.error('Failed to retrieve product', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     next(error);
   }
 }

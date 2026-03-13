@@ -40,4 +40,9 @@ tmp/
 temp/
 *.tmp
 
+# Binary files and tools (should be installed via package managers)
+*.exe
+*.zip
+windows-amd64/
+
 # Note: .md files should NOT be ignored - they contain important documentation

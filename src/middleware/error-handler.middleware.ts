@@ -4,6 +4,7 @@ import { isAppError } from '../utils/error.util';
 
 /**
  * Centralized error handling middleware
+ * Uses correlation ID for tracking errors across request lifecycle
  */
 export function errorHandler(
   err: Error,
@@ -13,10 +14,8 @@ export function errorHandler(
 ): void {
   const requestId = (req as any).requestId;
 
-  // Log error
-  logger.error('Error occurred', {
-    requestId,
-    error: err.message,
+  // Create child logger with correlation ID
+  const errorLogger = logger.child(requestId, {
     method: req.method,
     path: req.path,
   });
@@ -31,6 +30,14 @@ export function errorHandler(
     errorCode = err.errorCode;
     message = err.message;
   }
+
+  // Log error with full context
+  errorLogger.error('Error occurred', {
+    errorCode,
+    statusCode,
+    message: err.message,
+    stack: err.stack,
+  });
 
   // Send error response
   res.status(statusCode).json({

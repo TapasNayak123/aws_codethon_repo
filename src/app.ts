@@ -1,5 +1,6 @@
 import express, { Application } from 'express';
 import { requestCorrelation } from './middleware/request-correlation.middleware';
+import { requestLogger } from './middleware/request-logger.middleware';
 import { errorHandler } from './middleware/error-handler.middleware';
 import { rateLimiter } from './middleware/rate-limiter.middleware';
 import { securityHeaders } from './middleware/security-headers.middleware';
@@ -23,8 +24,11 @@ export function createApp(): Application {
   // Rate limiting
   app.use(rateLimiter);
 
-  // Request correlation
+  // Request correlation (must be before request logger)
   app.use(requestCorrelation);
+
+  // Request logging with correlation ID
+  app.use(requestLogger);
 
   // Mount API routes
   app.use('/api', routes);
