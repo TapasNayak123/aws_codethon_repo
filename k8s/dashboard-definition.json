@@ -1,0 +1,144 @@
+{
+    "widgets": [
+        {
+            "type": "log",
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields @timestamp\n| filter message = \"Request completed\"\n| stats count() as request_count by bin(1m)",
+                "region": "us-east-1",
+                "title": "API Request Volume (per minute)",
+                "stacked": false,
+                "view": "timeSeries"
+            }
+        },
+        {
+            "type": "log",
+            "x": 12,
+            "y": 0,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields @timestamp\n| filter level = \"error\"\n| stats count() as error_count by bin(1m)",
+                "region": "us-east-1",
+                "title": "Error Count (per minute)",
+                "stacked": false,
+                "view": "timeSeries"
+            }
+        },
+        {
+            "type": "log",
+            "x": 0,
+            "y": 6,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields @timestamp, duration\n| filter message = \"Request completed\"\n| stats avg(duration) as avg_ms, max(duration) as max_ms, min(duration) as min_ms by bin(5m)",
+                "region": "us-east-1",
+                "title": "Response Time Statistics (5min intervals)",
+                "stacked": false,
+                "view": "timeSeries"
+            }
+        },
+        {
+            "type": "log",
+            "x": 12,
+            "y": 6,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields @timestamp, statusCode\n| filter message = \"Request completed\"\n| stats count() by statusCode",
+                "region": "us-east-1",
+                "title": "HTTP Status Code Distribution",
+                "stacked": false,
+                "view": "pie"
+            }
+        },
+        {
+            "type": "log",
+            "x": 0,
+            "y": 12,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields @timestamp, path\n| filter message = \"Request completed\"\n| stats count() as request_count by path\n| sort request_count desc\n| limit 10",
+                "region": "us-east-1",
+                "title": "Top 10 API Endpoints",
+                "stacked": false,
+                "view": "table"
+            }
+        },
+        {
+            "type": "log",
+            "x": 12,
+            "y": 12,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields @timestamp, level, message, errorCode, path\n| filter level = \"error\"\n| sort @timestamp desc\n| limit 20",
+                "region": "us-east-1",
+                "title": "Recent Errors (Last 20)",
+                "stacked": false,
+                "view": "table"
+            }
+        },
+        {
+            "type": "log",
+            "x": 0,
+            "y": 18,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields path, duration\n| filter message = \"Request completed\"\n| stats avg(duration) as avg_response_time by path\n| sort avg_response_time desc\n| limit 10",
+                "region": "us-east-1",
+                "title": "Slowest API Endpoints",
+                "stacked": false,
+                "view": "table"
+            }
+        },
+        {
+            "type": "log",
+            "x": 12,
+            "y": 18,
+            "width": 12,
+            "height": 6,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields errorCode\n| filter level = \"error\"\n| stats count() as error_count by errorCode\n| sort error_count desc",
+                "region": "us-east-1",
+                "title": "Error Types Distribution",
+                "stacked": false,
+                "view": "pie"
+            }
+        },
+        {
+            "type": "log",
+            "x": 0,
+            "y": 24,
+            "width": 24,
+            "height": 6,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields @timestamp, correlationId, path, statusCode, duration, message\n| filter message = \"Request completed\" or level = \"error\"\n| sort @timestamp desc\n| limit 50",
+                "region": "us-east-1",
+                "title": "Recent Activity (Last 50 requests)",
+                "stacked": false,
+                "view": "table"
+            }
+        },
+        {
+            "type": "log",
+            "x": 0,
+            "y": 30,
+            "width": 24,
+            "height": 10,
+            "properties": {
+                "query": "SOURCE '/aws/eks/auth-api'\n| fields @timestamp, level, correlationId, method, path, statusCode, duration, message, errorCode, ip\n| sort @timestamp desc\n| limit 100",
+                "region": "us-east-1",
+                "title": "Interactive Logs - Filter and Search",
+                "stacked": false,
+                "view": "table"
+            }
+        }
+    ]
+}
