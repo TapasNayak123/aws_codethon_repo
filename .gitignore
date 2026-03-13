@@ -1,6 +1,6 @@
 # Dependencies
 node_modules/
-package-lock.json
+# package-lock.json should be committed for reproducible builds
 
 # Environment variables
 .env
@@ -40,5 +40,4 @@ tmp/
 temp/
 *.tmp
 
-# Doccuments
-.md
+# Note: .md files should NOT be ignored - they contain important documentation
