@@ -245,6 +245,7 @@ jobs:
             --set image.repository=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
             --set image.tag=${{ github.sha }} \
             --set replicaCount=1 \
+            --set autoscaling.enabled=false \
             --wait \
             --timeout 10m \
             --atomic \
