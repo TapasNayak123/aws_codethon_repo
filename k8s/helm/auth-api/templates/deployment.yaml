@@ -45,6 +45,10 @@ spec:
           value: {{ .Values.env.PORT | quote }}
         - name: LOG_LEVEL
           value: {{ .Values.env.LOG_LEVEL | quote }}
+        - name: CLOUDWATCH_LOG_GROUP
+          value: {{ .Values.env.CLOUDWATCH_LOG_GROUP | quote }}
+        - name: CLOUDWATCH_LOG_STREAM
+          value: {{ .Values.env.CLOUDWATCH_LOG_STREAM | quote }}
         {{- range .Values.secrets.keys }}
         - name: {{ . }}
           valueFrom:

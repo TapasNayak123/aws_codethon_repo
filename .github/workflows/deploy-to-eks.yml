@@ -227,6 +227,83 @@ jobs:
         with:
           version: '3.13.0'
 
+      - name: Setup CloudWatch Logging (IRSA)
+        run: |
+          echo "Setting up CloudWatch logging with IAM Roles for Service Accounts..."
+          
+          # Get AWS Account ID
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "Account ID: $ACCOUNT_ID"
+          
+          # Configuration
+          POLICY_NAME="AuthAPICloudWatchLogsPolicy"
+          ROLE_NAME="AuthAPICloudWatchLogsRole"
+          SERVICE_ACCOUNT_NAME="auth-api-sa"
+          NAMESPACE="default"
+          
+          # Create CloudWatch policy if it doesn't exist
+          POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${POLICY_NAME}"
+          if ! aws iam get-policy --policy-arn $POLICY_ARN 2>/dev/null; then
+            echo "Creating CloudWatch policy..."
+            aws iam create-policy \
+              --policy-name $POLICY_NAME \
+              --policy-document file://k8s/cloudwatch-policy.json \
+              --description "Policy for auth-api to write logs to CloudWatch"
+          else
+            echo "CloudWatch policy already exists"
+          fi
+          
+          # Get OIDC provider
+          OIDC_PROVIDER=$(aws eks describe-cluster --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }} --query "cluster.identity.oidc.issuer" --output text | sed 's|https://||')
+          echo "OIDC Provider: $OIDC_PROVIDER"
+          
+          # Create trust policy
+          cat > trust-policy.json <<EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "${OIDC_PROVIDER}:sub": "system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT_NAME}",
+                    "${OIDC_PROVIDER}:aud": "sts.amazonaws.com"
+                  }
+                }
+              }
+            ]
+          }
+          EOF
+          
+          # Create or update IAM role
+          ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+          if ! aws iam get-role --role-name $ROLE_NAME 2>/dev/null; then
+            echo "Creating IAM role..."
+            aws iam create-role \
+              --role-name $ROLE_NAME \
+              --assume-role-policy-document file://trust-policy.json \
+              --description "IAM role for auth-api CloudWatch logging"
+          else
+            echo "Updating IAM role trust policy..."
+            aws iam update-assume-role-policy \
+              --role-name $ROLE_NAME \
+              --policy-document file://trust-policy.json
+          fi
+          
+          # Attach policy to role
+          echo "Attaching policy to role..."
+          aws iam attach-role-policy \
+            --role-name $ROLE_NAME \
+            --policy-arn $POLICY_ARN || echo "Policy already attached"
+          
+          echo "CloudWatch IRSA setup complete!"
+          echo "Role ARN: $ROLE_ARN"
+          echo "ROLE_ARN=$ROLE_ARN" >> $GITHUB_ENV
+
       - name: Cleanup any stuck Helm releases
         run: |
           echo "Checking for stuck Helm releases..."
@@ -275,6 +352,7 @@ jobs:
             --set image.tag=development-${SHORT_SHA} \
             --set replicaCount=1 \
             --set autoscaling.enabled=false \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${ROLE_ARN}" \
             --wait \
             --timeout 10m \
             --force \

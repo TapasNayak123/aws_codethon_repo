@@ -74,6 +74,8 @@ env:
   NODE_ENV: production
   PORT: "3000"
   LOG_LEVEL: info
+  CLOUDWATCH_LOG_GROUP: /aws/eks/auth-api
+  CLOUDWATCH_LOG_STREAM: application
 
 # Secrets (reference to Kubernetes secret)
 secrets:

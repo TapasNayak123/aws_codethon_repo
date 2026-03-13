@@ -6,13 +6,11 @@ import { logger as winstonLogger } from '../config/logger.config';
  */
 class CorrelationLogger {
   /**
-   * Internal log method with timestamp
+   * Internal log method
+   * Note: Timestamp is added by Winston format, no need to add here
    */
   private log(level: string, message: string, meta: any = {}) {
-    winstonLogger.log(level, message, {
-      timestamp: new Date().toISOString(),
-      ...meta,
-    });
+    winstonLogger.log(level, message, meta);
   }
 
   /**

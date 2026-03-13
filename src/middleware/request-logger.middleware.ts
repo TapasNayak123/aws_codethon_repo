@@ -5,8 +5,14 @@ import { logger } from '../utils/logger';
  * Middleware to log all incoming requests and responses
  * Logs request start, end, duration, and status code
  * Uses correlation ID for tracking entire request lifecycle
+ * Skips logging for health check endpoints to reduce log volume
  */
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
+  // Skip logging for health check endpoints (reduces log spam from K8s probes)
+  if (req.path === '/api/health') {
+    return next();
+  }
+
   const requestId = (req as any).requestId;
   const startTime = Date.now();
 
