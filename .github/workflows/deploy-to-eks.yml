@@ -266,9 +266,13 @@ jobs:
       - name: Deploy to EKS with Helm
         run: |
           echo "Deploying with Helm..."
+          # Use the short SHA that matches ECR tags (first 7 characters)
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "Using image tag: development-${SHORT_SHA}"
+          
           helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ./k8s/helm/auth-api \
             --set image.repository=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
-            --set image.tag=${{ github.sha }} \
+            --set image.tag=development-${SHORT_SHA} \
             --set replicaCount=1 \
             --set autoscaling.enabled=false \
             --wait \
