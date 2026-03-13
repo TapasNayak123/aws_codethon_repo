@@ -8,6 +8,11 @@ on:
     branches:
       - development
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: auth-api
