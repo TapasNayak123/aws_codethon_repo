@@ -240,13 +240,27 @@ jobs:
 
       - name: Deploy to EKS with Helm
         run: |
+          echo "Deploying with Helm..."
           helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ./k8s/helm/auth-api \
             --set image.repository=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
             --set image.tag=${{ github.sha }} \
-            --set replicaCount=3 \
+            --set replicaCount=1 \
             --wait \
-            --timeout 5m \
-            --atomic
+            --timeout 10m \
+            --atomic \
+            --debug
+
+      - name: Check pod status
+        if: always()
+        run: |
+          echo "Checking pod status..."
+          kubectl get pods -l app=auth-api
+          echo ""
+          echo "Pod descriptions:"
+          kubectl describe pods -l app=auth-api
+          echo ""
+          echo "Pod logs:"
+          kubectl logs -l app=auth-api --tail=100 || echo "No logs available yet"
 
       - name: Verify deployment
         run: |
