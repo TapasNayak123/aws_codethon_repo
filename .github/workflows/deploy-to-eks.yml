@@ -231,11 +231,15 @@ jobs:
         run: |
           kubectl create secret generic auth-api-secrets \
             --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            --from-literal=JWT_EXPIRATION="1h" \
             --from-literal=AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
             --from-literal=AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
             --from-literal=AWS_REGION="${{ env.AWS_REGION }}" \
             --from-literal=DYNAMODB_USERS_TABLE="${{ secrets.DYNAMODB_USERS_TABLE }}" \
             --from-literal=DYNAMODB_PRODUCTS_TABLE="${{ secrets.DYNAMODB_PRODUCTS_TABLE }}" \
+            --from-literal=RATE_LIMIT_WINDOW_MS="900000" \
+            --from-literal=RATE_LIMIT_MAX_REQUESTS="100" \
+            --from-literal=LOG_LEVEL="info" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy to EKS with Helm

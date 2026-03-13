@@ -80,11 +80,15 @@ secrets:
   name: auth-api-secrets
   keys:
     - JWT_SECRET
+    - JWT_EXPIRATION
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
     - AWS_REGION
     - DYNAMODB_USERS_TABLE
     - DYNAMODB_PRODUCTS_TABLE
+    - RATE_LIMIT_WINDOW_MS
+    - RATE_LIMIT_MAX_REQUESTS
+    - LOG_LEVEL
 
 # Pod annotations
 podAnnotations: {}
