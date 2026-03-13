@@ -18,7 +18,7 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "lint": "tsc --noEmit",
-    "clean": "if exist dist rmdir /s /q dist",
+    "clean": "rm -rf dist",
     "prebuild": "npm run clean && npm run lint"
   },
   "keywords": [
