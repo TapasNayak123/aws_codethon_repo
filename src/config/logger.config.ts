@@ -35,6 +35,8 @@ if (config.nodeEnv === 'production' && process.env.AWS_REGION) {
       logStreamName: `${process.env.CLOUDWATCH_LOG_STREAM || 'application'}-${new Date().toISOString().split('T')[0]}`,
       awsRegion: process.env.AWS_REGION,
       jsonMessage: true,
+      // Reduce batching delays for faster log delivery
+      uploadRate: 500,        // Upload every 500ms (default: 2000ms)
       messageFormatter: (logObject: any) => {
         // Format log message for CloudWatch
         return JSON.stringify({
