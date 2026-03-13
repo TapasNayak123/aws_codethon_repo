@@ -23,20 +23,21 @@ export function isValidDate(dateString: string): boolean {
 
 /**
  * Calculate age from date of birth
- * Uses 365.25 days per year to account for leap years
+ * Uses proper date comparison to handle timezones correctly
  */
 export function calculateAge(dateOfBirth: string): number {
-  const birthDate = new Date(dateOfBirth);
+  const birthDate = new Date(dateOfBirth + 'T00:00:00Z');
   const today = new Date();
-
-  // Calculate difference in milliseconds
-  const diffMs = today.getTime() - birthDate.getTime();
-
-  // Convert to years (365.25 days per year)
-  const ageYears = diffMs / (1000 * 60 * 60 * 24 * 365.25);
-
-  // Floor to integer
-  return Math.floor(ageYears);
+  
+  let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+  const monthDiff = today.getUTCMonth() - birthDate.getUTCMonth();
+  
+  // Adjust age if birthday hasn't occurred yet this year
+  if (monthDiff < 0 || (monthDiff === 0 && today.getUTCDate() < birthDate.getUTCDate())) {
+    age--;
+  }
+  
+  return age;
 }
 
 /**
