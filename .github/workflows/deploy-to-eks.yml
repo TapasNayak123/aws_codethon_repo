@@ -248,20 +248,32 @@ jobs:
             --set autoscaling.enabled=false \
             --wait \
             --timeout 10m \
-            --atomic \
             --debug
 
-      - name: Check pod status
+      - name: Check pod status (even if deployment fails)
         if: always()
         run: |
-          echo "Checking pod status..."
-          kubectl get pods -l app=auth-api
+          echo "=== Checking pod status ==="
+          kubectl get pods -l app=auth-api || echo "No pods found"
           echo ""
-          echo "Pod descriptions:"
-          kubectl describe pods -l app=auth-api
+          echo "=== All pods in default namespace ==="
+          kubectl get pods
           echo ""
-          echo "Pod logs:"
-          kubectl logs -l app=auth-api --tail=100 || echo "No logs available yet"
+          echo "=== Pod descriptions ==="
+          kubectl describe pods -l app=auth-api || echo "No pods to describe"
+          echo ""
+          echo "=== Pod logs ==="
+          kubectl logs -l app=auth-api --tail=200 --all-containers=true || echo "No logs available"
+          echo ""
+          echo "=== Deployment status ==="
+          kubectl get deployment auth-api || echo "Deployment not found"
+          kubectl describe deployment auth-api || echo "Cannot describe deployment"
+          echo ""
+          echo "=== ReplicaSet status ==="
+          kubectl get rs -l app=auth-api || echo "No ReplicaSets found"
+          echo ""
+          echo "=== Events ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -20
 
       - name: Verify deployment
         run: |
