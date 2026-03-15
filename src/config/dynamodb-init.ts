@@ -102,6 +102,44 @@ async function createProductsTable(): Promise<void> {
 }
 
 /**
+ * Create Favourites table
+ */
+async function createFavouritesTable(): Promise<void> {
+  const tableName = config.dynamodb.favouritesTable;
+
+  logger.info(`Creating DynamoDB table: ${tableName}`);
+
+  const command = new CreateTableCommand({
+    TableName: tableName,
+    KeySchema: [{ AttributeName: 'favouriteId', KeyType: 'HASH' }],
+    AttributeDefinitions: [
+      { AttributeName: 'favouriteId', AttributeType: 'S' },
+      { AttributeName: 'userId', AttributeType: 'S' },
+    ],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: 'userId-index',
+        KeySchema: [{ AttributeName: 'userId', KeyType: 'HASH' }],
+        Projection: { ProjectionType: 'ALL' },
+        ProvisionedThroughput: {
+          ReadCapacityUnits: 5,
+          WriteCapacityUnits: 5,
+        },
+      },
+    ],
+    ProvisionedThroughput: {
+      ReadCapacityUnits: 5,
+      WriteCapacityUnits: 5,
+    },
+  });
+
+  await client.send(command);
+  logger.info(`✅ Table created: ${tableName}`);
+
+  await waitForTableActive(tableName);
+}
+
+/**
  * Wait for table to become active
  */
 async function waitForTableActive(tableName: string, maxAttempts = 30): Promise<void> {
@@ -131,7 +169,8 @@ export async function initializeDynamoDB(): Promise<void> {
   console.log(`   Region: ${config.aws.region}`);
   console.log(`   Endpoint: ${config.aws.dynamodbEndpoint || 'AWS DynamoDB'}`);
   console.log(`   Users Table: ${config.dynamodb.usersTable}`);
-  console.log(`   Products Table: ${config.dynamodb.productsTable}\n`);
+  console.log(`   Products Table: ${config.dynamodb.productsTable}`);
+  console.log(`   Favourites Table: ${config.dynamodb.favouritesTable}\n`);
 
   try {
     // Check and create Users table
@@ -154,6 +193,17 @@ export async function initializeDynamoDB(): Promise<void> {
     } else {
       logger.info(`✅ Table ${config.dynamodb.productsTable} already exists`);
       console.log(`✅ Table ${config.dynamodb.productsTable} already exists`);
+    }
+
+    // Check and create Favourites table
+    const favouritesTableExists = await tableExists(config.dynamodb.favouritesTable);
+    if (!favouritesTableExists) {
+      logger.info(`Table ${config.dynamodb.favouritesTable} does not exist, creating...`);
+      console.log(`📝 Creating table: ${config.dynamodb.favouritesTable}...`);
+      await createFavouritesTable();
+    } else {
+      logger.info(`✅ Table ${config.dynamodb.favouritesTable} already exists`);
+      console.log(`✅ Table ${config.dynamodb.favouritesTable} already exists`);
     }
 
     logger.info('✅ DynamoDB initialization complete');
