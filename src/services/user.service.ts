@@ -1,12 +1,17 @@
 import { CreateUserDTO, UserResponseDTO } from '../types/user.types';
 import * as UserModel from '../models/user.model';
 import * as PasswordService from './password.service';
-import { AuthenticationError } from '../utils/error.util';
+import { AuthenticationError, ConflictError } from '../utils/error.util';
 
 /**
  * Create a new user account
  */
 export async function createUser(userData: CreateUserDTO): Promise<UserResponseDTO> {
+  const existingUser = await UserModel.emailExists(userData.email);
+  if (existingUser) {
+    throw new ConflictError('A user with this email already exists');
+  }
+
   const hashedPassword = await PasswordService.hashPassword(userData.password);
 
   const user = await UserModel.create({
