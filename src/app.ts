@@ -1,10 +1,11 @@
-import express, { Application } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import { requestCorrelation } from './middleware/request-correlation.middleware';
 import { requestLogger } from './middleware/request-logger.middleware';
 import { errorHandler } from './middleware/error-handler.middleware';
 import { rateLimiter } from './middleware/rate-limiter.middleware';
 import { securityHeaders } from './middleware/security-headers.middleware';
 import { corsMiddleware } from './middleware/cors.middleware';
+import { NotFoundError } from './utils/error.util';
 import routes from './routes';
 
 /**
@@ -32,6 +33,11 @@ export function createApp(): Application {
 
   // Mount API routes
   app.use('/api', routes);
+
+  // 404 handler for unmatched routes (must be after all routes, before error handler)
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    next(new NotFoundError(`Route not found: ${req.method} ${req.path}`));
+  });
 
   // Error handling middleware (must be last)
   app.use(errorHandler);
