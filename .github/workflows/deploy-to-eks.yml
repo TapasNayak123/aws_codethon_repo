@@ -307,23 +307,18 @@ jobs:
       - name: Cleanup any stuck Helm releases
         run: |
           echo "Checking for stuck Helm releases..."
-          helm list --all --short || echo "No releases found"
+          RELEASE_STATUS=$(helm list --filter "^auth-api$" -o json | jq -r '.[0].status // "not-found"')
+          echo "Release status: $RELEASE_STATUS"
           
-          # Check if auth-api release exists and is stuck
-          if helm list --all | grep -q "auth-api"; then
-            echo "Found existing auth-api release, checking status..."
-            helm list --all | grep "auth-api"
-            
-            # Try to rollback or uninstall if stuck
-            echo "Attempting to clean up stuck release..."
-            helm rollback auth-api 0 --wait --timeout 30s || echo "Rollback failed or not needed"
-            helm uninstall auth-api --wait --timeout 30s || echo "Uninstall failed or not needed"
+          if [ "$RELEASE_STATUS" = "failed" ] || [ "$RELEASE_STATUS" = "pending-install" ] || [ "$RELEASE_STATUS" = "pending-upgrade" ] || [ "$RELEASE_STATUS" = "pending-rollback" ]; then
+            echo "⚠️ Release is stuck in '$RELEASE_STATUS' state. Cleaning up..."
+            helm uninstall auth-api --wait --timeout 120s || echo "Uninstall failed, will try fresh install"
+            sleep 5
+          elif [ "$RELEASE_STATUS" = "deployed" ]; then
+            echo "✅ Release is healthy. helm upgrade --install will handle the update."
           else
-            echo "No existing auth-api release found"
+            echo "No existing auth-api release found. Fresh install will proceed."
           fi
-          
-          # Wait a bit for cleanup to complete
-          sleep 5
 
       - name: Create/Update Kubernetes secrets
         run: |
