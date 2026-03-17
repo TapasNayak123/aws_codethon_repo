@@ -15,6 +15,7 @@ interface EnvConfig {
   dynamodb: {
     usersTable: string;
     productsTable: string;
+    favouritesTable: string;
   };
   jwt: {
     secret: string;
@@ -38,6 +39,7 @@ function validateEnv(): EnvConfig {
     'AWS_SECRET_ACCESS_KEY',
     'DYNAMODB_USERS_TABLE',
     'DYNAMODB_PRODUCTS_TABLE',
+    'DYNAMODB_FAVOURITES_TABLE',
     'JWT_SECRET',
     'JWT_EXPIRATION',
     'RATE_LIMIT_WINDOW_MS',
@@ -65,6 +67,7 @@ function validateEnv(): EnvConfig {
     dynamodb: {
       usersTable: process.env.DYNAMODB_USERS_TABLE!,
       productsTable: process.env.DYNAMODB_PRODUCTS_TABLE!,
+      favouritesTable: process.env.DYNAMODB_FAVOURITES_TABLE!,
     },
     jwt: {
       secret: process.env.JWT_SECRET!,
