@@ -45,5 +45,3 @@ export function createApp(): Application {
   return app;
 }
 
-// Export default app instance for server.ts
-export default createApp();

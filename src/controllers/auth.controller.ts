@@ -113,3 +113,86 @@ export async function login(
     next(error);
   }
 }
+
+
+/**
+ * Get user profile
+ * GET /api/auth/profile
+ */
+export async function getProfile(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const requestId = (req as any).requestId;
+  const user = (req as any).user;
+  const requestLogger = logger.child(requestId, {
+    endpoint: 'GET /api/auth/profile',
+  });
+
+  try {
+    requestLogger.info('Fetching user profile', { userId: user.userId });
+
+    const profile = await UserService.getUserProfile(user.userId);
+
+    requestLogger.info('Profile retrieved successfully', { userId: user.userId });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Profile retrieved successfully',
+      data: profile,
+      requestId,
+    });
+  } catch (error) {
+    requestLogger.error('Failed to retrieve profile', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}
+
+/**
+ * Update user profile
+ * PUT /api/auth/profile
+ */
+export async function updateProfile(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const requestId = (req as any).requestId;
+  const user = (req as any).user;
+  const requestLogger = logger.child(requestId, {
+    endpoint: 'PUT /api/auth/profile',
+  });
+
+  try {
+    requestLogger.info('Processing profile update', { userId: user.userId });
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      requestLogger.warn('Profile update validation failed', {
+        errors: errors.array().map(e => ({ field: e.type === 'field' ? e.path : 'body', message: e.msg })),
+      });
+      throw new ValidationError(errors.array()[0].msg);
+    }
+
+    const updateData = req.body;
+
+    const profile = await UserService.updateUserProfile(user.userId, updateData);
+
+    requestLogger.info('Profile updated successfully', { userId: user.userId });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Profile updated successfully',
+      data: profile,
+      requestId,
+    });
+  } catch (error) {
+    requestLogger.error('Profile update failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}

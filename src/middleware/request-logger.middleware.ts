@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
+import { addLogEntry } from '../services/request-log.service';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Middleware to log all incoming requests and responses
@@ -45,6 +47,23 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       statusCode: res.statusCode,
       duration: `${duration}ms`,
       contentLength: res.get('content-length'),
+    });
+
+    // Capture to in-memory request log store for interactive monitoring
+    addLogEntry({
+      id: uuidv4(),
+      timestamp: new Date().toISOString(),
+      method: req.method,
+      path: req.originalUrl || req.path,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip || 'unknown',
+      userAgent: req.headers['user-agent'] || 'unknown',
+      correlationId: requestId,
+      userId: (req as any).user?.userId,
+      requestBody: sanitizeBody(req.body),
+      responseStatus: res.statusCode < 400 ? 'success' : 'error',
+      errorMessage: res.statusCode >= 400 ? `HTTP ${res.statusCode}` : undefined,
     });
 
     // Call original end function

@@ -1,16 +1,13 @@
 import {
-  DynamoDBDocumentClient,
   PutCommand,
   GetCommand,
   QueryCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
-import { dynamoDBClient } from '../config/database.config';
+import { dynamoDB } from '../config/database.config';
 import { config } from '../config/env.config';
-import { User, CreateUserDTO } from '../types/user.types';
-
-const docClient = DynamoDBDocumentClient.from(dynamoDBClient);
+import { User, CreateUserDTO, UpdateUserDTO } from '../types/user.types';
 
 /**
  * Create a new user in DynamoDB
@@ -23,8 +20,8 @@ export async function create(userData: CreateUserDTO & { password: string }): Pr
     userId,
     fullName: userData.fullName,
     dateOfBirth: userData.dateOfBirth,
-    email: userData.email.toLowerCase(), // Store lowercase for consistency
-    password: userData.password, // Already hashed by service
+    email: userData.email.toLowerCase(),
+    password: userData.password,
     createdAt: now,
     updatedAt: now,
   };
@@ -34,7 +31,7 @@ export async function create(userData: CreateUserDTO & { password: string }): Pr
     Item: user,
   });
 
-  await docClient.send(command);
+  await dynamoDB.send(command);
 
   return user;
 }
@@ -52,7 +49,7 @@ export async function findByEmail(email: string): Promise<User | null> {
     },
   });
 
-  const result = await docClient.send(command);
+  const result = await dynamoDB.send(command);
 
   if (!result.Items || result.Items.length === 0) {
     return null;
@@ -72,7 +69,7 @@ export async function findById(userId: string): Promise<User | null> {
     },
   });
 
-  const result = await docClient.send(command);
+  const result = await dynamoDB.send(command);
 
   if (!result.Item) {
     return null;
@@ -99,7 +96,7 @@ export async function updatePassword(userId: string, hashedPassword: string): Pr
     },
   });
 
-  await docClient.send(command);
+  await dynamoDB.send(command);
 }
 
 /**
@@ -108,4 +105,32 @@ export async function updatePassword(userId: string, hashedPassword: string): Pr
 export async function emailExists(email: string): Promise<boolean> {
   const user = await findByEmail(email);
   return user !== null;
+}
+
+
+/**
+ * Update user profile in DynamoDB
+ */
+export async function updateProfile(userId: string, updateData: UpdateUserDTO): Promise<void> {
+  const now = new Date().toISOString();
+  const updateExpressions: string[] = ['updatedAt = :updatedAt'];
+  const expressionValues: Record<string, any> = { ':updatedAt': now };
+
+  if (updateData.fullName !== undefined) {
+    updateExpressions.push('fullName = :fullName');
+    expressionValues[':fullName'] = updateData.fullName;
+  }
+  if (updateData.dateOfBirth !== undefined) {
+    updateExpressions.push('dateOfBirth = :dateOfBirth');
+    expressionValues[':dateOfBirth'] = updateData.dateOfBirth;
+  }
+
+  const command = new UpdateCommand({
+    TableName: config.dynamodb.usersTable,
+    Key: { userId },
+    UpdateExpression: `SET ${updateExpressions.join(', ')}`,
+    ExpressionAttributeValues: expressionValues,
+  });
+
+  await dynamoDB.send(command);
 }

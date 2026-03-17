@@ -21,6 +21,20 @@ export interface UserResponseDTO {
   fullName: string;
 }
 
+export interface UpdateUserDTO {
+  fullName?: string;
+  dateOfBirth?: string;
+}
+
+export interface UserProfileResponseDTO {
+  userId: string;
+  email: string;
+  fullName: string;
+  dateOfBirth: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface LoginRequestDTO {
   email: string;
   password: string;

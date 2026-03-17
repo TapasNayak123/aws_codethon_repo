@@ -136,14 +136,14 @@ echo ""
 
 # Step 6: Get Service URL
 echo "Step 6: Getting service URL..."
-echo "Waiting for Load Balancer to be ready..."
-sleep 30
+echo "Waiting for ALB Ingress to be ready..."
+sleep 60
 
-SERVICE_URL=$(kubectl get service ${HELM_RELEASE_NAME}-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+SERVICE_URL=$(kubectl get ingress ${HELM_RELEASE_NAME}-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
 if [ -z "$SERVICE_URL" ]; then
-    echo "Load Balancer URL not ready yet. Run this command to get it later:"
-    echo "kubectl get service ${HELM_RELEASE_NAME}-service"
+    echo "ALB URL not ready yet. Run this command to get it later:"
+    echo "kubectl get ingress ${HELM_RELEASE_NAME}-ingress"
 else
     echo ""
     echo "=========================================="
@@ -158,6 +158,6 @@ else
     echo "Useful commands:"
     echo "  View pods: kubectl get pods"
     echo "  View logs: kubectl logs -l app=auth-api --tail=100"
-    echo "  View service: kubectl get service ${HELM_RELEASE_NAME}-service"
+    echo "  View ingress: kubectl get ingress ${HELM_RELEASE_NAME}-ingress"
     echo ""
 fi

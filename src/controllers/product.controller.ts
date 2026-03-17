@@ -163,3 +163,139 @@ export async function getProductById(
     next(error);
   }
 }
+
+
+/**
+ * Update a product
+ * Requires authentication
+ */
+export async function updateProduct(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const requestId = (req as any).requestId;
+  const requestLogger = logger.child(requestId, {
+    endpoint: 'PUT /api/products/:productId',
+  });
+
+  try {
+    requestLogger.info('Processing product update');
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const formattedErrors = errors.array().map(err => ({
+        field: err.type === 'field' ? err.path : 'body',
+        message: err.msg,
+      }));
+      requestLogger.warn('Product update validation failed', { errors: formattedErrors });
+      throw new ValidationError(
+        `Validation failed: ${formattedErrors.map(e => e.message).join(', ')}`
+      );
+    }
+
+    const { productId } = req.params;
+    const updateData = req.body;
+
+    requestLogger.debug('Updating product', { productId, fields: Object.keys(updateData) });
+
+    const product = await ProductService.updateProduct(productId, updateData);
+
+    requestLogger.info('Product updated successfully', { productId });
+
+    res.status(200).json(
+      successResponse('Product updated successfully', product, requestId)
+    );
+  } catch (error) {
+    requestLogger.error('Product update failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}
+
+/**
+ * Delete a product
+ * Requires authentication
+ */
+export async function deleteProduct(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const requestId = (req as any).requestId;
+  const requestLogger = logger.child(requestId, {
+    endpoint: 'DELETE /api/products/:productId',
+  });
+
+  try {
+    requestLogger.info('Processing product deletion');
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw new ValidationError(`Validation failed: ${errors.array()[0].msg}`);
+    }
+
+    const { productId } = req.params;
+
+    requestLogger.debug('Deleting product', { productId });
+
+    const product = await ProductService.deleteProduct(productId);
+
+    requestLogger.info('Product deleted successfully', { productId });
+
+    res.status(200).json(
+      successResponse('Product deleted successfully', product, requestId)
+    );
+  } catch (error) {
+    requestLogger.error('Product deletion failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}
+
+/**
+ * Search products with filtering, sorting, and pagination
+ * Requires authentication
+ */
+export async function searchProducts(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const requestId = (req as any).requestId;
+  const requestLogger = logger.child(requestId, {
+    endpoint: 'GET /api/products/search',
+  });
+
+  try {
+    requestLogger.info('Processing product search', { query: req.query });
+
+    const searchParams = {
+      search: req.query.q as string | undefined,
+      minPrice: req.query.minPrice ? parseFloat(req.query.minPrice as string) : undefined,
+      maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice as string) : undefined,
+      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 10,
+      sortBy: (req.query.sortBy as 'productName' | 'price' | 'createdAt') || 'createdAt',
+      sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
+    };
+
+    const result = await ProductService.searchProducts(searchParams);
+
+    requestLogger.info('Product search completed', {
+      totalItems: result.pagination.totalItems,
+      page: result.pagination.page,
+    });
+
+    res.status(200).json(
+      successResponse('Products retrieved successfully', result, requestId)
+    );
+  } catch (error) {
+    requestLogger.error('Product search failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}

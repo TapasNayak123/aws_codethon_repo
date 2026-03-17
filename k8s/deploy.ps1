@@ -133,14 +133,14 @@ Write-Host ""
 
 # Step 6: Get Service URL
 Write-Host "Step 6: Getting service URL..." -ForegroundColor Yellow
-Write-Host "Waiting for Load Balancer to be ready..."
-Start-Sleep -Seconds 30
+Write-Host "Waiting for ALB Ingress to be ready..."
+Start-Sleep -Seconds 60
 
-$SERVICE_URL = kubectl get service "$HELM_RELEASE_NAME-service" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+$SERVICE_URL = kubectl get ingress "$HELM_RELEASE_NAME-ingress" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 
 if ([string]::IsNullOrEmpty($SERVICE_URL)) {
-    Write-Host "Load Balancer URL not ready yet. Run this command to get it later:" -ForegroundColor Yellow
-    Write-Host "kubectl get service $HELM_RELEASE_NAME-service" -ForegroundColor Cyan
+    Write-Host "ALB URL not ready yet. Run this command to get it later:" -ForegroundColor Yellow
+    Write-Host "kubectl get ingress $HELM_RELEASE_NAME-ingress" -ForegroundColor Cyan
 } else {
     Write-Host ""
     Write-Host "==========================================" -ForegroundColor Green
@@ -155,6 +155,6 @@ if ([string]::IsNullOrEmpty($SERVICE_URL)) {
     Write-Host "Useful commands:" -ForegroundColor Yellow
     Write-Host "  View pods: kubectl get pods" -ForegroundColor Cyan
     Write-Host "  View logs: kubectl logs -l app=auth-api --tail=100" -ForegroundColor Cyan
-    Write-Host "  View service: kubectl get service $HELM_RELEASE_NAME-service" -ForegroundColor Cyan
+    Write-Host "  View ingress: kubectl get ingress $HELM_RELEASE_NAME-ingress" -ForegroundColor Cyan
     Write-Host ""
 }

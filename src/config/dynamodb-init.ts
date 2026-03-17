@@ -3,24 +3,13 @@
  */
 
 import {
-  DynamoDBClient,
   CreateTableCommand,
   DescribeTableCommand,
   ResourceNotFoundException,
 } from '@aws-sdk/client-dynamodb';
+import { dynamoDBClient as client } from './database.config';
 import { config } from './env.config';
 import { logger } from '../utils/logger';
-
-const client = new DynamoDBClient({
-  region: config.aws.region,
-  credentials: {
-    accessKeyId: config.aws.accessKeyId,
-    secretAccessKey: config.aws.secretAccessKey,
-  },
-  ...(config.aws.dynamodbEndpoint && {
-    endpoint: config.aws.dynamodbEndpoint,
-  }),
-});
 
 /**
  * Check if a table exists

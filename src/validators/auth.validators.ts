@@ -74,3 +74,44 @@ export const loginValidation: ValidationChain[] = [
 
   body('password').notEmpty().withMessage('Password is required'),
 ];
+
+
+/**
+ * Validation rules for profile update
+ */
+export const updateProfileValidation: ValidationChain[] = [
+  body('fullName')
+    .optional()
+    .trim()
+    .isLength({ min: 2 })
+    .withMessage('Full name must be at least 2 characters'),
+
+  body('dateOfBirth')
+    .optional()
+    .trim()
+    .custom((value) => {
+      if (!isValidDate(value)) {
+        throw new Error('Invalid date format. Use YYYY-MM-DD');
+      }
+      if (isFutureDate(value)) {
+        throw new Error('Date of birth cannot be in the future');
+      }
+      if (!isMinimumAge(value, 18)) {
+        throw new Error('You must be at least 18 years old');
+      }
+      return true;
+    }),
+
+  body()
+    .custom((value) => {
+      const allowedFields = ['fullName', 'dateOfBirth'];
+      const extraFields = Object.keys(value).filter(key => !allowedFields.includes(key));
+      if (extraFields.length > 0) {
+        throw new Error(`Unexpected fields: ${extraFields.join(', ')}. Only fullName and dateOfBirth can be updated.`);
+      }
+      if (Object.keys(value).length === 0) {
+        throw new Error('At least one field must be provided for update');
+      }
+      return true;
+    }),
+];

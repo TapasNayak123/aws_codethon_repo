@@ -1,12 +1,19 @@
 import cors from 'cors';
+import { config } from '../config/env.config';
 
 /**
  * CORS middleware configuration
- * Allows cross-origin requests from all origins (development-friendly)
- * Can be restricted per environment in production
+ * Production: restricted to configured origins
+ * Development: allows all origins
  */
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : [];
+
 export const corsMiddleware = cors({
-  origin: '*', // Allow all origins (can be restricted to specific domains)
+  origin: config.nodeEnv === 'production' && allowedOrigins.length > 0
+    ? allowedOrigins
+    : true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],

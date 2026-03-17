@@ -184,3 +184,71 @@ export const getProductByIdValidation = [
     .isUUID()
     .withMessage('Product ID must be a valid UUID'),
 ];
+
+
+/**
+ * Validation rules for updating a product
+ */
+export const updateProductValidation: ValidationChain[] = [
+  param('productId')
+    .trim()
+    .notEmpty()
+    .withMessage('Product ID is required')
+    .isUUID()
+    .withMessage('Product ID must be a valid UUID'),
+
+  body('productName')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Product name must be between 2 and 100 characters')
+    .matches(/^[a-zA-Z0-9\s\-&',.()]+$/)
+    .withMessage('Product name contains invalid characters'),
+
+  body('price')
+    .optional()
+    .isFloat({ min: 0.01, max: 999999.99 })
+    .withMessage('Price must be between $0.01 and $999,999.99'),
+
+  body('availableQuantity')
+    .optional()
+    .isInt({ min: 0, max: 1000000 })
+    .withMessage('Available quantity must be between 0 and 1,000,000'),
+
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ min: 10, max: 1000 })
+    .withMessage('Description must be between 10 and 1000 characters'),
+
+  body('imageUrl')
+    .optional()
+    .trim()
+    .isURL({ protocols: ['http', 'https'], require_protocol: true })
+    .withMessage('Image URL must be a valid HTTP/HTTPS URL'),
+
+  body()
+    .custom((value) => {
+      const allowedFields = ['productName', 'price', 'availableQuantity', 'description', 'imageUrl'];
+      const extraFields = Object.keys(value).filter(key => !allowedFields.includes(key));
+      if (extraFields.length > 0) {
+        throw new Error(`Unexpected fields: ${extraFields.join(', ')}`);
+      }
+      if (Object.keys(value).length === 0) {
+        throw new Error('At least one field must be provided for update');
+      }
+      return true;
+    }),
+];
+
+/**
+ * Validation rules for deleting a product
+ */
+export const deleteProductValidation = [
+  param('productId')
+    .trim()
+    .notEmpty()
+    .withMessage('Product ID is required')
+    .isUUID()
+    .withMessage('Product ID must be a valid UUID'),
+];
