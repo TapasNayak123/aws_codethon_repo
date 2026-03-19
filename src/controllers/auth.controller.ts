@@ -1,9 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
-import { validationResult } from 'express-validator';
 import * as UserService from '../services/user.service';
 import * as TokenService from '../services/token.service';
-import { ValidationError } from '../utils/error.util';
-import { logger } from '../utils/logger';
+import { successResponse } from '../utils/response-formatter';
+import { RequestLogger } from '../utils/logger';
+
+/**
+ * Helper to get the request-scoped logger (attached by request-logger middleware)
+ */
+function getLog(req: Request): RequestLogger {
+  return (req as any).log;
+}
 
 /**
  * User registration endpoint
@@ -14,45 +20,24 @@ export async function register(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'POST /api/auth/register',
-  });
 
   try {
-    requestLogger.info('Processing user registration');
-
-    // Check validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      requestLogger.warn('Validation failed', {
-        errors: errors.array().map(e => ({ field: e.type === 'field' ? e.path : 'body', message: e.msg })),
-      });
-      throw new ValidationError(errors.array()[0].msg);
-    }
+    log.info('REGISTER_START', { phase: 'controller', email: req.body.email });
 
     const { fullName, dateOfBirth, email, password } = req.body;
 
-    requestLogger.debug('Creating user', { email, fullName });
+    const user = await UserService.createUser({ fullName, dateOfBirth, email, password }, log);
 
-    // Create user
-    const user = await UserService.createUser({
-      fullName,
-      dateOfBirth,
-      email,
-      password,
-    });
+    log.info('REGISTER_SUCCESS', { phase: 'controller', userId: user.userId, email: user.email });
 
-    requestLogger.info('User registered successfully', { userId: user.userId, email: user.email });
-
-    res.status(201).json({
-      status: 'success',
-      message: 'User registered successfully',
-      data: user,
-      requestId,
-    });
+    res.status(201).json(
+      successResponse('User registered successfully', user, requestId)
+    );
   } catch (error) {
-    requestLogger.error('Registration failed', {
+    log.error('REGISTER_FAILED', {
+      phase: 'controller',
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);
@@ -68,52 +53,31 @@ export async function login(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'POST /api/auth/login',
-  });
 
   try {
-    requestLogger.info('Processing user login');
-
-    // Check validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      requestLogger.warn('Validation failed', {
-        errors: errors.array().map(e => ({ field: e.type === 'field' ? e.path : 'body', message: e.msg })),
-      });
-      throw new ValidationError(errors.array()[0].msg);
-    }
+    log.info('LOGIN_START', { phase: 'controller', email: req.body.email });
 
     const { email, password } = req.body;
 
-    requestLogger.debug('Authenticating user', { email });
+    const { user } = await UserService.authenticateUser(email, password, log);
 
-    // Authenticate user
-    const { user } = await UserService.authenticateUser(email, password);
-
-    // Generate JWT token
     const token = TokenService.generateJWT(user.userId, user.email);
 
-    requestLogger.info('User logged in successfully', { userId: user.userId, email: user.email });
+    log.info('LOGIN_SUCCESS', { phase: 'controller', userId: user.userId });
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Login successful',
-      data: {
-        token,
-        user,
-      },
-      requestId,
-    });
+    res.status(200).json(
+      successResponse('Login successful', { token, user }, requestId)
+    );
   } catch (error) {
-    requestLogger.error('Login failed', {
+    log.error('LOGIN_FAILED', {
+      phase: 'controller',
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);
   }
 }
-
 
 /**
  * Get user profile
@@ -124,27 +88,24 @@ export async function getProfile(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
   const user = (req as any).user;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'GET /api/auth/profile',
-  });
 
   try {
-    requestLogger.info('Fetching user profile', { userId: user.userId });
+    log.info('GET_PROFILE_START', { phase: 'controller', userId: user.userId });
 
-    const profile = await UserService.getUserProfile(user.userId);
+    const profile = await UserService.getUserProfile(user.userId, log);
 
-    requestLogger.info('Profile retrieved successfully', { userId: user.userId });
+    log.info('GET_PROFILE_SUCCESS', { phase: 'controller', userId: user.userId });
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Profile retrieved successfully',
-      data: profile,
-      requestId,
-    });
+    res.status(200).json(
+      successResponse('Profile retrieved successfully', profile, requestId)
+    );
   } catch (error) {
-    requestLogger.error('Failed to retrieve profile', {
+    log.error('GET_PROFILE_FAILED', {
+      phase: 'controller',
+      userId: user.userId,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);
@@ -160,37 +121,28 @@ export async function updateProfile(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
   const user = (req as any).user;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'PUT /api/auth/profile',
-  });
 
   try {
-    requestLogger.info('Processing profile update', { userId: user.userId });
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      requestLogger.warn('Profile update validation failed', {
-        errors: errors.array().map(e => ({ field: e.type === 'field' ? e.path : 'body', message: e.msg })),
-      });
-      throw new ValidationError(errors.array()[0].msg);
-    }
-
-    const updateData = req.body;
-
-    const profile = await UserService.updateUserProfile(user.userId, updateData);
-
-    requestLogger.info('Profile updated successfully', { userId: user.userId });
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Profile updated successfully',
-      data: profile,
-      requestId,
+    log.info('UPDATE_PROFILE_START', {
+      phase: 'controller',
+      userId: user.userId,
+      fields: Object.keys(req.body),
     });
+
+    const profile = await UserService.updateUserProfile(user.userId, req.body, log);
+
+    log.info('UPDATE_PROFILE_SUCCESS', { phase: 'controller', userId: user.userId });
+
+    res.status(200).json(
+      successResponse('Profile updated successfully', profile, requestId)
+    );
   } catch (error) {
-    requestLogger.error('Profile update failed', {
+    log.error('UPDATE_PROFILE_FAILED', {
+      phase: 'controller',
+      userId: user.userId,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);

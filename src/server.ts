@@ -22,18 +22,17 @@ async function startServer(): Promise<void> {
         port,
         environment: config.nodeEnv,
       });
-      console.log(`🚀 Server running on port ${port}`);
-      console.log(`📝 Environment: ${config.nodeEnv}`);
-      console.log(`\n🔗 API Endpoints:`);
-      console.log(`\n   Authentication:`);
-      console.log(`   POST http://localhost:${port}/api/auth/register`);
-      console.log(`   POST http://localhost:${port}/api/auth/login`);
-      console.log(`\n   Products (requires JWT token):`);
-      console.log(`   POST http://localhost:${port}/api/products`);
-      console.log(`   GET  http://localhost:${port}/api/products`);
-      console.log(`   GET  http://localhost:${port}/api/products/:productId`);
-      console.log(`\n   Health Check:`);
-      console.log(`   GET  http://localhost:${port}/api/health`);
+
+      if (config.nodeEnv !== 'production') {
+        console.log(`\n🚀 Server running on port ${port} [${config.nodeEnv}]`);
+        console.log(`\n🔗 API Endpoints:`);
+        console.log(`   POST http://localhost:${port}/api/auth/register`);
+        console.log(`   POST http://localhost:${port}/api/auth/login`);
+        console.log(`   POST http://localhost:${port}/api/products`);
+        console.log(`   GET  http://localhost:${port}/api/products`);
+        console.log(`   GET  http://localhost:${port}/api/products/:productId`);
+        console.log(`   GET  http://localhost:${port}/api/health\n`);
+      }
     });
 
     // Graceful shutdown for clean K8s pod termination
@@ -56,7 +55,6 @@ async function startServer(): Promise<void> {
     logger.error('Failed to start server', {
       error: error instanceof Error ? error.message : 'Unknown error',
     });
-    console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 }

@@ -1,13 +1,20 @@
 import { Request, Response, NextFunction } from 'express';
-import { logger } from '../utils/logger';
+import { logger, RequestLogger } from '../utils/logger';
 import { addLogEntry } from '../services/request-log.service';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
- * Middleware to log all incoming requests and responses
- * Logs request start, end, duration, and status code
- * Uses correlation ID for tracking entire request lifecycle
- * Skips logging for health check endpoints to reduce log volume
+ * Middleware to log the full request-to-response journey with correlation ID tracing.
+ *
+ * Attaches a child logger (req.log) so every downstream layer — controllers,
+ * services, models — can log with the same correlationId without recreating it.
+ *
+ * Journey logged:
+ *   1. REQUEST_RECEIVED  — incoming request with headers, query, sanitized body
+ *   2. (downstream logs from middleware, controllers, services, models)
+ *   3. REQUEST_COMPLETED — final status code + duration
+ *
+ * Skips health-check endpoints to avoid K8s probe log spam.
  */
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   // Skip logging for health check endpoints (reduces log spam from K8s probes)
@@ -15,36 +22,41 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     return next();
   }
 
-  const requestId = (req as any).requestId;
+  const correlationId: string = (req as any).requestId;
   const startTime = Date.now();
 
-  // Create child logger with correlation ID
-  const requestLogger = logger.child(requestId, {
+  // Create a child logger bound to this request's correlation ID + route info
+  const reqLog: RequestLogger = logger.child(correlationId, {
     method: req.method,
-    path: req.path,
-    ip: req.ip,
+    path: req.originalUrl || req.path,
   });
 
-  // Log request start
-  requestLogger.info('Request started', {
-    headers: {
-      'user-agent': req.headers['user-agent'],
-      'content-type': req.headers['content-type'],
-    },
-    query: req.query,
+  // Attach to request so controllers/services/models can use req.log directly
+  (req as any).log = reqLog;
+
+  // ── Step 1: Log request arrival ──
+  reqLog.info('REQUEST_RECEIVED', {
+    phase: 'request',
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
+    contentType: req.headers['content-type'],
+    query: Object.keys(req.query).length > 0 ? req.query : undefined,
     body: sanitizeBody(req.body),
   });
 
-  // Capture original end function
+  // ── Step 3: Log response completion (wraps res.end) ──
   const originalEnd = res.end;
 
-  // Override res.end to log response
   res.end = function (chunk?: any, encoding?: any, callback?: any): Response {
     const duration = Date.now() - startTime;
+    const statusCode = res.statusCode;
 
-    // Log request completion
-    requestLogger.info('Request completed', {
-      statusCode: res.statusCode,
+    // Choose log level based on status code
+    const logMethod = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info';
+
+    reqLog[logMethod]('REQUEST_COMPLETED', {
+      phase: 'response',
+      statusCode,
       duration: `${duration}ms`,
       contentLength: res.get('content-length'),
     });
@@ -55,18 +67,17 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       timestamp: new Date().toISOString(),
       method: req.method,
       path: req.originalUrl || req.path,
-      statusCode: res.statusCode,
+      statusCode,
       duration: `${duration}ms`,
       ip: req.ip || 'unknown',
       userAgent: req.headers['user-agent'] || 'unknown',
-      correlationId: requestId,
+      correlationId,
       userId: (req as any).user?.userId,
       requestBody: sanitizeBody(req.body),
-      responseStatus: res.statusCode < 400 ? 'success' : 'error',
-      errorMessage: res.statusCode >= 400 ? `HTTP ${res.statusCode}` : undefined,
+      responseStatus: statusCode < 400 ? 'success' : 'error',
+      errorMessage: statusCode >= 400 ? `HTTP ${statusCode}` : undefined,
     });
 
-    // Call original end function
     return originalEnd.call(this, chunk, encoding, callback);
   };
 

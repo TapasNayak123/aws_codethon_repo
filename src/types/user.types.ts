@@ -35,16 +35,4 @@ export interface UserProfileResponseDTO {
   updatedAt: string;
 }
 
-export interface LoginRequestDTO {
-  email: string;
-  password: string;
-}
 
-export interface ForgotPasswordRequestDTO {
-  email: string;
-}
-
-export interface ResetPasswordRequestDTO {
-  token: string;
-  newPassword: string;
-}

@@ -1,9 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { validationResult } from 'express-validator';
 import * as ProductService from '../services/product.service';
 import { successResponse } from '../utils/response-formatter';
-import { ValidationError } from '../utils/error.util';
-import { logger } from '../utils/logger';
+import { RequestLogger } from '../utils/logger';
+
+/**
+ * Helper to get the request-scoped logger (attached by request-logger middleware)
+ */
+function getLog(req: Request): RequestLogger {
+  return (req as any).log;
+}
 
 /**
  * Create a new product or multiple products
@@ -14,56 +19,29 @@ export async function createProduct(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'POST /api/products',
-  });
 
   try {
-    requestLogger.info('Processing product creation');
+    const isArray = Array.isArray(req.body);
+    const productsData = isArray ? req.body : [req.body];
 
-    // Check validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      // Format validation errors for better readability
-      const formattedErrors = errors.array().map(err => ({
-        field: err.type === 'field' ? err.path : 'body',
-        message: err.msg,
-        value: err.type === 'field' ? err.value : undefined,
-      }));
-      
-      requestLogger.warn('Product validation failed', { errors: formattedErrors });
-      
-      throw new ValidationError(
-        `Product validation failed: ${formattedErrors.map(e => e.message).join(', ')}`
-      );
-    }
+    log.info('CREATE_PRODUCT_START', { phase: 'controller', count: productsData.length, isBatch: isArray });
 
-    const body = req.body;
-
-    // Check if body is an array or single object
-    const isArray = Array.isArray(body);
-    const productsData = isArray ? body : [body];
-
-    requestLogger.debug('Creating products', { count: productsData.length, isArray });
-
-    // Create all products
     const createdProducts = [];
     for (const productData of productsData) {
       const product = await ProductService.createProduct({
         productName: productData.productName,
-        price: parseFloat(productData.price),
-        availableQuantity: parseInt(productData.availableQuantity, 10),
+        price: productData.price,
+        availableQuantity: productData.availableQuantity,
         description: productData.description,
         imageUrl: productData.imageUrl,
-      });
+      }, log);
       createdProducts.push(product);
-      requestLogger.debug('Product created', { productId: product.productId, productName: product.productName });
     }
 
-    requestLogger.info('Products created successfully', { count: createdProducts.length });
+    log.info('CREATE_PRODUCT_SUCCESS', { phase: 'controller', count: createdProducts.length });
 
-    // Return appropriate response
     if (isArray) {
       res.status(201).json(
         successResponse(
@@ -78,7 +56,8 @@ export async function createProduct(
       );
     }
   } catch (error) {
-    requestLogger.error('Product creation failed', {
+    log.error('CREATE_PRODUCT_FAILED', {
+      phase: 'controller',
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);
@@ -93,17 +72,15 @@ export async function getAllProducts(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'GET /api/products',
-  });
 
   try {
-    requestLogger.info('Fetching all products');
+    log.info('GET_ALL_PRODUCTS_START', { phase: 'controller' });
 
-    const products = await ProductService.getAllProducts();
+    const products = await ProductService.getAllProducts(log);
 
-    requestLogger.info('Products retrieved successfully', { count: products.length });
+    log.info('GET_ALL_PRODUCTS_SUCCESS', { phase: 'controller', count: products.length });
 
     res.status(200).json(
       successResponse(
@@ -113,7 +90,8 @@ export async function getAllProducts(
       )
     );
   } catch (error) {
-    requestLogger.error('Failed to retrieve products', {
+    log.error('GET_ALL_PRODUCTS_FAILED', {
+      phase: 'controller',
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);
@@ -128,42 +106,30 @@ export async function getProductById(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'GET /api/products/:productId',
-  });
 
   try {
-    requestLogger.info('Fetching product by ID');
-
-    // Check validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      requestLogger.warn('Validation failed', {
-        errors: errors.array().map(e => ({ field: e.type === 'field' ? e.path : 'body', message: e.msg })),
-      });
-      throw new ValidationError(`Validation failed: ${errors.array()[0].msg}`);
-    }
-
     const { productId } = req.params;
 
-    requestLogger.debug('Retrieving product', { productId });
+    log.info('GET_PRODUCT_START', { phase: 'controller', productId });
 
-    const product = await ProductService.getProductById(productId);
+    const product = await ProductService.getProductById(productId, log);
 
-    requestLogger.info('Product retrieved successfully', { productId: product.productId });
+    log.info('GET_PRODUCT_SUCCESS', { phase: 'controller', productId });
 
     res.status(200).json(
       successResponse('Product retrieved successfully', product, requestId)
     );
   } catch (error) {
-    requestLogger.error('Failed to retrieve product', {
+    log.error('GET_PRODUCT_FAILED', {
+      phase: 'controller',
+      productId: req.params.productId,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);
   }
 }
-
 
 /**
  * Update a product
@@ -174,40 +140,29 @@ export async function updateProduct(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'PUT /api/products/:productId',
-  });
 
   try {
-    requestLogger.info('Processing product update');
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      const formattedErrors = errors.array().map(err => ({
-        field: err.type === 'field' ? err.path : 'body',
-        message: err.msg,
-      }));
-      requestLogger.warn('Product update validation failed', { errors: formattedErrors });
-      throw new ValidationError(
-        `Validation failed: ${formattedErrors.map(e => e.message).join(', ')}`
-      );
-    }
-
     const { productId } = req.params;
-    const updateData = req.body;
 
-    requestLogger.debug('Updating product', { productId, fields: Object.keys(updateData) });
+    log.info('UPDATE_PRODUCT_START', {
+      phase: 'controller',
+      productId,
+      fields: Object.keys(req.body),
+    });
 
-    const product = await ProductService.updateProduct(productId, updateData);
+    const product = await ProductService.updateProduct(productId, req.body, log);
 
-    requestLogger.info('Product updated successfully', { productId });
+    log.info('UPDATE_PRODUCT_SUCCESS', { phase: 'controller', productId });
 
     res.status(200).json(
       successResponse('Product updated successfully', product, requestId)
     );
   } catch (error) {
-    requestLogger.error('Product update failed', {
+    log.error('UPDATE_PRODUCT_FAILED', {
+      phase: 'controller',
+      productId: req.params.productId,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);
@@ -223,32 +178,25 @@ export async function deleteProduct(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'DELETE /api/products/:productId',
-  });
 
   try {
-    requestLogger.info('Processing product deletion');
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      throw new ValidationError(`Validation failed: ${errors.array()[0].msg}`);
-    }
-
     const { productId } = req.params;
 
-    requestLogger.debug('Deleting product', { productId });
+    log.info('DELETE_PRODUCT_START', { phase: 'controller', productId });
 
-    const product = await ProductService.deleteProduct(productId);
+    const product = await ProductService.deleteProduct(productId, log);
 
-    requestLogger.info('Product deleted successfully', { productId });
+    log.info('DELETE_PRODUCT_SUCCESS', { phase: 'controller', productId });
 
     res.status(200).json(
       successResponse('Product deleted successfully', product, requestId)
     );
   } catch (error) {
-    requestLogger.error('Product deletion failed', {
+    log.error('DELETE_PRODUCT_FAILED', {
+      phase: 'controller',
+      productId: req.params.productId,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);
@@ -264,14 +212,10 @@ export async function searchProducts(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
   const requestId = (req as any).requestId;
-  const requestLogger = logger.child(requestId, {
-    endpoint: 'GET /api/products/search',
-  });
 
   try {
-    requestLogger.info('Processing product search', { query: req.query });
-
     const searchParams = {
       search: req.query.q as string | undefined,
       minPrice: req.query.minPrice ? parseFloat(req.query.minPrice as string) : undefined,
@@ -282,9 +226,12 @@ export async function searchProducts(
       sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
     };
 
-    const result = await ProductService.searchProducts(searchParams);
+    log.info('SEARCH_PRODUCTS_START', { phase: 'controller', searchParams });
 
-    requestLogger.info('Product search completed', {
+    const result = await ProductService.searchProducts(searchParams, log);
+
+    log.info('SEARCH_PRODUCTS_SUCCESS', {
+      phase: 'controller',
       totalItems: result.pagination.totalItems,
       page: result.pagination.page,
     });
@@ -293,7 +240,8 @@ export async function searchProducts(
       successResponse('Products retrieved successfully', result, requestId)
     );
   } catch (error) {
-    requestLogger.error('Product search failed', {
+    log.error('SEARCH_PRODUCTS_FAILED', {
+      phase: 'controller',
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     next(error);

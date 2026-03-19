@@ -50,24 +50,6 @@ export class ConflictError extends AppError {
 }
 
 /**
- * 429 Too Many Requests - Rate limit exceeded
- */
-export class RateLimitError extends AppError {
-  constructor(message: string = 'Too many requests. Please try again later') {
-    super(message, 429, 'RATE_LIMIT_ERROR');
-  }
-}
-
-/**
- * 500 Internal Server Error - Unexpected errors
- */
-export class InternalError extends AppError {
-  constructor(message: string = 'An unexpected error occurred') {
-    super(message, 500, 'INTERNAL_ERROR');
-  }
-}
-
-/**
  * Check if error is an instance of AppError
  */
 export function isAppError(error: unknown): error is AppError {

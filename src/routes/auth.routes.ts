@@ -5,11 +5,8 @@ import {
   getProfile,
   updateProfile,
 } from '../controllers/auth.controller';
-import {
-  registrationValidation,
-  loginValidation,
-  updateProfileValidation,
-} from '../validators/auth.validators';
+import { validateBody } from '../middleware/schema-validator.middleware';
+import { registerSchema, loginSchema, updateProfileSchema } from '../schemas/auth.schemas';
 import { authenticate } from '../middleware/authenticate.middleware';
 
 const router = Router();
@@ -18,13 +15,13 @@ const router = Router();
  * User registration
  * POST /api/auth/register
  */
-router.post('/register', registrationValidation, register);
+router.post('/register', validateBody(registerSchema), register);
 
 /**
  * User login
  * POST /api/auth/login
  */
-router.post('/login', loginValidation, login);
+router.post('/login', validateBody(loginSchema), login);
 
 /**
  * Get user profile (requires authentication)
@@ -36,6 +33,6 @@ router.get('/profile', authenticate, getProfile);
  * Update user profile (requires authentication)
  * PUT /api/auth/profile
  */
-router.put('/profile', authenticate, updateProfileValidation, updateProfile);
+router.put('/profile', authenticate, validateBody(updateProfileSchema), updateProfile);
 
 export default router;

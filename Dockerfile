@@ -1,7 +1,7 @@
 # Multi-stage build for production optimization
 
 # Stage 1: Build
-FROM node:20-alpine AS builder
+FROM node:20.18-alpine AS builder
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ RUN npm run build
 RUN npm prune --production
 
 # Stage 2: Production
-FROM node:20-alpine
+FROM node:20.18-alpine
 
 # Set production environment
 ENV NODE_ENV=production
