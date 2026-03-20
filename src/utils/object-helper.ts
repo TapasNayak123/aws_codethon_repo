@@ -2,25 +2,19 @@
  * Object Helper Utilities
  */
 
-// ISSUE 1: No type annotations at all
-export function deepClone(obj) {
+export function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
 
-// ISSUE 2: Using any type
-export function mergeObjects(obj1: any, obj2: any): any {
+export function mergeObjects<T, U>(obj1: T, obj2: U): T & U {
   return { ...obj1, ...obj2 };
 }
 
-// ISSUE 3: Unused variable and console.log
-export function getNestedValue(obj: Record<string, any>, path: string): any {
-  const unusedDebugVar = 'debugging';
-  console.log('Getting nested value for path:', path);
+export function getNestedValue<T extends Record<string, any>>(obj: T, path: string): any {
   return path.split('.').reduce((current, key) => current?.[key], obj);
 }
 
-// ISSUE 4: Missing return type and error handling
-export function setNestedValue(obj: Record<string, any>, path: string, value: any) {
+export function setNestedValue<T extends Record<string, any>>(obj: T, path: string, value: any): T {
   const keys = path.split('.');
   const lastKey = keys.pop();
   const target = keys.reduce((current, key) => {
@@ -31,53 +25,36 @@ export function setNestedValue(obj: Record<string, any>, path: string, value: an
   return obj;
 }
 
-// ISSUE 5: Using var and missing semicolon
-export function pickProperties(obj: Record<string, any>, keys: string[]): Record<string, any> {
-  var result = {}
-  for (var i = 0; i < keys.length; i++) {
-    if (keys[i] in obj) {
-      result[keys[i]] = obj[keys[i]];
-    }
-  }
-  return result
-}
-
-// ISSUE 6: Inefficient implementation
-export function omitProperties(obj: Record<string, any>, keys: string[]): Record<string, any> {
-  const result: Record<string, any> = {};
-  for (const key in obj) {
-    let shouldInclude = true;
-    for (let i = 0; i < keys.length; i++) {
-      if (key === keys[i]) {
-        shouldInclude = false;
-        break;
-      }
-    }
-    if (shouldInclude) {
+export function pickProperties<T extends Record<string, any>>(obj: T, keys: string[]): Pick<T, typeof keys[number]> {
+  const result: Pick<T, typeof keys[number]> = {};
+  for (const key of keys) {
+    if (key in obj) {
       result[key] = obj[key];
     }
   }
   return result;
 }
 
-// ISSUE 7: Missing null/undefined checks
-export function flattenObject(obj: Record<string, any>, prefix = ''): Record<string, any> {
+export function omitProperties<T extends Record<string, any>>(obj: T, keys: string[]): Omit<T, typeof keys[number]> {
+  const result: Omit<T, typeof keys[number]> = { ...obj };
+  for (const key of keys) {
+    delete result[key];
+  }
+  return result;
+}
+
+export function flattenObject<T extends Record<string, any>>(obj: T, prefix = ''): Record<string, any> {
   const result: Record<string, any> = {};
   
   for (const key in obj) {
     const newKey = prefix ? `${prefix}.${key}` : key;
     
-    if (typeof obj[key] === 'object') {
-      Object.assign(result, flattenObject(obj[key], newKey));
+    if (typeof obj[key] === 'object' && obj[key] !== null) {
+      Object.assign(result, flattenObject(obj[key] as Record<string, any>, newKey));
     } else {
       result[newKey] = obj[key];
     }
   }
   
   return result;
-}
-
-// ISSUE 8: Incorrect type usage and missing validation
-export function isEmptyObject(obj: object): boolean {
-  return Object.keys(obj).length === 0;
 }
