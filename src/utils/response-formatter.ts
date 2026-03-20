@@ -1,5 +1,8 @@
 import { ApiResponse, ErrorResponse } from '../types/response.types';
 
+/**
+ * Create a success response with version info
+ */
 export function successResponse<T>(
   message: string,
   data: T | null = null,
@@ -9,6 +12,7 @@ export function successResponse<T>(
     status: 'success',
     message,
     data,
+    version: '1.0.0',
     ...(requestId && { requestId }),
   };
 }
