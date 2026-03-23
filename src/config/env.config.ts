@@ -8,8 +8,8 @@ interface EnvConfig {
   port: number;
   aws: {
     region: string;
-    accessKeyId: string;
-    secretAccessKey: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
     dynamodbEndpoint?: string;
   };
   dynamodb: {
@@ -34,8 +34,6 @@ function validateEnv(): EnvConfig {
     'NODE_ENV',
     'PORT',
     'AWS_REGION',
-    'AWS_ACCESS_KEY_ID',
-    'AWS_SECRET_ACCESS_KEY',
     'DYNAMODB_USERS_TABLE',
     'DYNAMODB_PRODUCTS_TABLE',
     'JWT_SECRET',
@@ -58,8 +56,8 @@ function validateEnv(): EnvConfig {
     port: parseInt(process.env.PORT!, 10),
     aws: {
       region: process.env.AWS_REGION!,
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
       dynamodbEndpoint: process.env.DYNAMODB_ENDPOINT,
     },
     dynamodb: {

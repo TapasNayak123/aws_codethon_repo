@@ -3,7 +3,7 @@ kind: ClusterConfig
 
 metadata:
   name: auth-api-cluster
-  region: us-east-1
+  region: ap-south-1
   version: "1.28"
 
 managedNodeGroups:
@@ -42,3 +42,4 @@ cloudWatch:
       - authenticator
       - controllerManager
       - scheduler
+

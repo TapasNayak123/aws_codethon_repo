@@ -3,16 +3,23 @@ import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { config } from './env.config';
 
 // Create DynamoDB client
-const dynamoDBClient = new DynamoDBClient({
+// If explicit credentials are provided (local dev), use them.
+// Otherwise, let the SDK use the default credential chain (ECS task role, etc.)
+const clientConfig: ConstructorParameters<typeof DynamoDBClient>[0] = {
   region: config.aws.region,
-  credentials: {
-    accessKeyId: config.aws.accessKeyId,
-    secretAccessKey: config.aws.secretAccessKey,
-  },
   ...(config.aws.dynamodbEndpoint && {
     endpoint: config.aws.dynamodbEndpoint,
   }),
-});
+};
+
+if (config.aws.accessKeyId && config.aws.secretAccessKey) {
+  clientConfig.credentials = {
+    accessKeyId: config.aws.accessKeyId,
+    secretAccessKey: config.aws.secretAccessKey,
+  };
+}
+
+const dynamoDBClient = new DynamoDBClient(clientConfig);
 
 // Export the base client
 export { dynamoDBClient };
