@@ -155,9 +155,6 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build, tag, and push image to ECR
         id: build-image
         env:
@@ -225,7 +222,15 @@ jobs:
         id: task-def
         run: |
           ACCOUNT_ID=${{ steps.account.outputs.account-id }}
-          IMAGE_URI=${{ needs.build.outputs.image-uri }}
+          IMAGE_URI="${{ needs.build.outputs.image-uri }}"
+
+          # Fallback: construct image URI if output is empty
+          if [ -z "$IMAGE_URI" ]; then
+            IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:poc-${{ github.sha }}"
+            echo "WARNING: build output was empty, using constructed URI: $IMAGE_URI"
+          fi
+
+          echo "Using image: $IMAGE_URI"
 
           cat > task-definition.json <<EOF
           {
