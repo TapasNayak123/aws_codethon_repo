@@ -2,9 +2,12 @@
  * Product type definitions
  */
 
+export type ProductCategory = 'Electronics' | 'Clothing' | 'Food' | 'Books' | 'Home' | 'Sports' | 'Other';
+
 export interface Product {
   productId: string;
   productName: string;
+  category: ProductCategory;
   price: number;
   availableQuantity: number;
   description: string;
@@ -15,6 +18,7 @@ export interface Product {
 
 export interface CreateProductDTO {
   productName: string;
+  category: ProductCategory;
   price: number;
   availableQuantity: number;
   description: string;
@@ -23,6 +27,7 @@ export interface CreateProductDTO {
 
 export interface UpdateProductDTO {
   productName?: string;
+  category?: ProductCategory;
   price?: number;
   availableQuantity?: number;
   description?: string;
@@ -31,6 +36,7 @@ export interface UpdateProductDTO {
 
 export interface ProductSearchParams {
   search?: string;
+  category?: ProductCategory;
   minPrice?: number;
   maxPrice?: number;
   page?: number;
@@ -54,6 +60,7 @@ export interface PaginatedProductsResponse {
 export interface ProductResponseDTO {
   productId: string;
   productName: string;
+  category: ProductCategory;
   price: number;
   availableQuantity: number;
   description: string;
