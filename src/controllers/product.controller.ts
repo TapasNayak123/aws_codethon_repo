@@ -1,8 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { validationResult } from 'express-validator';
 import * as ProductService from '../services/product.service';
 import { successResponse } from '../utils/response-formatter';
-import { ValidationError } from '../utils/error.util';
+import { RequestLogger } from '../utils/logger';
+
+/**
+ * Helper to get the request-scoped logger (attached by request-logger middleware)
+ */
+function getLog(req: Request): RequestLogger {
+  return (req as any).log;
+}
 
 /**
  * Create a new product or multiple products
@@ -13,45 +19,30 @@ export async function createProduct(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
+
   try {
-    // Check validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      // Format validation errors for better readability
-      const formattedErrors = errors.array().map(err => ({
-        field: err.type === 'field' ? err.path : 'body',
-        message: err.msg,
-        value: err.type === 'field' ? err.value : undefined,
-      }));
-      
-      throw new ValidationError(
-        `Product validation failed: ${formattedErrors.map(e => e.message).join(', ')}`
-      );
-    }
+    const isArray = Array.isArray(req.body);
+    const productsData = isArray ? req.body : [req.body];
 
-    const body = req.body;
+    log.info('CREATE_PRODUCT_START', { phase: 'controller', count: productsData.length, isBatch: isArray });
 
-    // Check if body is an array or single object
-    const isArray = Array.isArray(body);
-    const productsData = isArray ? body : [body];
-
-    // Create all products
     const createdProducts = [];
     for (const productData of productsData) {
       const product = await ProductService.createProduct({
         productName: productData.productName,
-        price: parseFloat(productData.price),
-        availableQuantity: parseInt(productData.availableQuantity, 10),
+        category: productData.category,
+        price: productData.price,
+        availableQuantity: productData.availableQuantity,
         description: productData.description,
         imageUrl: productData.imageUrl,
-      });
+      }, log);
       createdProducts.push(product);
     }
 
-    // Get request ID
-    const requestId = (req as any).requestId;
+    log.info('CREATE_PRODUCT_SUCCESS', { phase: 'controller', count: createdProducts.length });
 
-    // Return appropriate response
     if (isArray) {
       res.status(201).json(
         successResponse(
@@ -66,6 +57,10 @@ export async function createProduct(
       );
     }
   } catch (error) {
+    log.error('CREATE_PRODUCT_FAILED', {
+      phase: 'controller',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     next(error);
   }
 }
@@ -78,10 +73,15 @@ export async function getAllProducts(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  try {
-    const products = await ProductService.getAllProducts();
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
 
-    const requestId = (req as any).requestId;
+  try {
+    log.info('GET_ALL_PRODUCTS_START', { phase: 'controller' });
+
+    const products = await ProductService.getAllProducts(log);
+
+    log.info('GET_ALL_PRODUCTS_SUCCESS', { phase: 'controller', count: products.length });
 
     res.status(200).json(
       successResponse(
@@ -91,6 +91,10 @@ export async function getAllProducts(
       )
     );
   } catch (error) {
+    log.error('GET_ALL_PRODUCTS_FAILED', {
+      phase: 'controller',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     next(error);
   }
 }
@@ -103,23 +107,144 @@ export async function getProductById(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  try {
-    // Check validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      throw new ValidationError(`Validation failed: ${errors.array()[0].msg}`);
-    }
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
 
+  try {
     const { productId } = req.params;
 
-    const product = await ProductService.getProductById(productId);
+    log.info('GET_PRODUCT_START', { phase: 'controller', productId });
 
-    const requestId = (req as any).requestId;
+    const product = await ProductService.getProductById(productId, log);
+
+    log.info('GET_PRODUCT_SUCCESS', { phase: 'controller', productId });
 
     res.status(200).json(
       successResponse('Product retrieved successfully', product, requestId)
     );
   } catch (error) {
+    log.error('GET_PRODUCT_FAILED', {
+      phase: 'controller',
+      productId: req.params.productId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}
+
+/**
+ * Update a product
+ * Requires authentication
+ */
+export async function updateProduct(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
+
+  try {
+    const { productId } = req.params;
+
+    log.info('UPDATE_PRODUCT_START', {
+      phase: 'controller',
+      productId,
+      fields: Object.keys(req.body),
+    });
+
+    const product = await ProductService.updateProduct(productId, req.body, log);
+
+    log.info('UPDATE_PRODUCT_SUCCESS', { phase: 'controller', productId });
+
+    res.status(200).json(
+      successResponse('Product updated successfully', product, requestId)
+    );
+  } catch (error) {
+    log.error('UPDATE_PRODUCT_FAILED', {
+      phase: 'controller',
+      productId: req.params.productId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}
+
+/**
+ * Delete a product
+ * Requires authentication
+ */
+export async function deleteProduct(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
+
+  try {
+    const { productId } = req.params;
+
+    log.info('DELETE_PRODUCT_START', { phase: 'controller', productId });
+
+    const product = await ProductService.deleteProduct(productId, log);
+
+    log.info('DELETE_PRODUCT_SUCCESS', { phase: 'controller', productId });
+
+    res.status(200).json(
+      successResponse('Product deleted successfully', product, requestId)
+    );
+  } catch (error) {
+    log.error('DELETE_PRODUCT_FAILED', {
+      phase: 'controller',
+      productId: req.params.productId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}
+
+/**
+ * Search products with filtering, sorting, and pagination
+ * Requires authentication
+ */
+export async function searchProducts(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
+
+  try {
+    const searchParams = {
+      search: req.query.q as string | undefined,
+      minPrice: req.query.minPrice ? parseFloat(req.query.minPrice as string) : undefined,
+      maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice as string) : undefined,
+      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 10,
+      sortBy: (req.query.sortBy as 'productName' | 'price' | 'createdAt') || 'createdAt',
+      sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
+    };
+
+    log.info('SEARCH_PRODUCTS_START', { phase: 'controller', searchParams });
+
+    const result = await ProductService.searchProducts(searchParams, log);
+
+    log.info('SEARCH_PRODUCTS_SUCCESS', {
+      phase: 'controller',
+      totalItems: result.pagination.totalItems,
+      page: result.pagination.page,
+    });
+
+    res.status(200).json(
+      successResponse('Products retrieved successfully', result, requestId)
+    );
+  } catch (error) {
+    log.error('SEARCH_PRODUCTS_FAILED', {
+      phase: 'controller',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     next(error);
   }
 }

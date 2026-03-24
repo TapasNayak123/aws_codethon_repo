@@ -1,12 +1,13 @@
 # Dependencies
 node_modules/
-package-lock.json
+# package-lock.json should be committed for reproducible builds
 
 # Environment variables
 .env
 .env.local
 .env.production
 .env.*.local
+
 
 # Build output
 dist/
@@ -38,3 +39,10 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Binary files and tools (should be installed via package managers)
+*.exe
+*.zip
+windows-amd64/
+
+# Note: .md files should NOT be ignored - they contain important documentation

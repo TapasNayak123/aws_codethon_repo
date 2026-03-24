@@ -18,7 +18,7 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "lint": "tsc --noEmit",
-    "clean": "if exist dist rmdir /s /q dist",
+    "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
     "prebuild": "npm run clean && npm run lint"
   },
   "keywords": [
@@ -33,16 +33,18 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.525.0",
     "@aws-sdk/lib-dynamodb": "^3.525.0",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.18.3",
     "express-rate-limit": "^7.2.0",
-    "express-validator": "^7.0.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "uuid": "^9.0.1",
-    "winston": "^3.12.0"
+    "winston": "^3.12.0",
+    "winston-cloudwatch": "^6.3.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -3,6 +3,7 @@ export interface ApiResponse<T = any> {
   message: string;
   data: T | null;
   requestId?: string;
+  timestamp?: string;
 }
 
 export interface ErrorResponse extends ApiResponse<null> {

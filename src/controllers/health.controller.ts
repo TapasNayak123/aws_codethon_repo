@@ -4,6 +4,7 @@ import { getHealthStatus } from '../services/health.service';
 /**
  * Health check endpoint
  * Returns application health status
+ * Note: Intentionally minimal logging to avoid log spam from K8s probes
  */
 export async function healthCheck(
   _req: Request,
@@ -12,7 +13,6 @@ export async function healthCheck(
 ): Promise<void> {
   try {
     const healthStatus = getHealthStatus();
-
     res.status(200).json(healthStatus);
   } catch (error) {
     next(error);

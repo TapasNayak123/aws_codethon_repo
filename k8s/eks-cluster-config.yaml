@@ -1,0 +1,44 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: auth-api-cluster
+  region: us-east-1
+  version: "1.28"
+
+managedNodeGroups:
+  - name: auth-api-nodes
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 3
+    volumeSize: 20
+    ssh:
+      allow: false
+    labels:
+      role: worker
+      environment: production
+    tags:
+      Environment: production
+      Application: auth-api
+      ManagedBy: eksctl
+
+iam:
+  withOIDC: true
+  serviceAccounts:
+    - metadata:
+        name: auth-api-sa
+        namespace: default
+      attachPolicyARNs:
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+
+# Enable CloudWatch logging
+cloudWatch:
+  clusterLogging:
+    enableTypes:
+      - api
+      - audit
+      - authenticator
+      - controllerManager
+      - scheduler

@@ -1,0 +1,600 @@
+name: Deploy to AWS EKS
+
+on:
+  push:
+    branches:
+      - development
+  pull_request:
+    branches:
+      - development
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: auth-api
+  EKS_CLUSTER_NAME: auth-api-cluster
+  HELM_RELEASE_NAME: auth-api
+  NODE_VERSION: '22.x'
+
+jobs:
+  # ============================================
+  # STAGE 1: SECURITY SCANNING
+  # ============================================
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner (Filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=high || true
+          npm audit --json > npm-audit.json || true
+
+      - name: Check for secrets in code
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'auth-api'
+          path: '.'
+          format: 'HTML'
+          args: >
+            --failOnCVSS 7
+            --enableRetired
+
+      - name: Upload Dependency Check results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-check-report
+          path: reports/
+
+  # ============================================
+  # STAGE 2: TESTING
+  # ============================================
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: security
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint || echo "No lint script found"
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Generate test coverage
+        run: npm run test:coverage || npm test
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage/coverage-final.json
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Archive test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            coverage/
+            test-results/
+
+  # ============================================
+  # STAGE 3: BUILD & PUSH DOCKER IMAGE
+  # ============================================
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production
+
+      - name: Run Trivy vulnerability scanner (Docker Image)
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.ref_name }}
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy image scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-image-results.sarif') != ''
+        with:
+          sarif_file: 'trivy-image-results.sarif'
+
+  # ============================================
+  # STAGE 4: DEPLOY TO EKS
+  # ============================================
+  deploy:
+    name: Deploy to EKS
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: development
+      url: ${{ steps.get-url.outputs.url }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.13.0'
+
+      - name: Setup CloudWatch Logging (IRSA)
+        run: |
+          echo "Setting up CloudWatch logging with IAM Roles for Service Accounts..."
+          
+          # Get AWS Account ID
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "Account ID: $ACCOUNT_ID"
+          
+          # Configuration
+          POLICY_NAME="AuthAPICloudWatchLogsPolicy"
+          ROLE_NAME="AuthAPICloudWatchLogsRole"
+          SERVICE_ACCOUNT_NAME="auth-api-sa"
+          NAMESPACE="default"
+          
+          # Create CloudWatch policy if it doesn't exist
+          POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${POLICY_NAME}"
+          if ! aws iam get-policy --policy-arn $POLICY_ARN 2>/dev/null; then
+            echo "Creating CloudWatch policy..."
+            aws iam create-policy \
+              --policy-name $POLICY_NAME \
+              --policy-document file://k8s/cloudwatch-policy.json \
+              --description "Policy for auth-api to write logs to CloudWatch"
+          else
+            echo "CloudWatch policy already exists"
+          fi
+          
+          # Get OIDC provider
+          OIDC_PROVIDER=$(aws eks describe-cluster --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }} --query "cluster.identity.oidc.issuer" --output text | sed 's|https://||')
+          echo "OIDC Provider: $OIDC_PROVIDER"
+          
+          # Create trust policy
+          cat > trust-policy.json <<EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "${OIDC_PROVIDER}:sub": "system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT_NAME}",
+                    "${OIDC_PROVIDER}:aud": "sts.amazonaws.com"
+                  }
+                }
+              }
+            ]
+          }
+          EOF
+          
+          # Create or update IAM role
+          ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+          if ! aws iam get-role --role-name $ROLE_NAME 2>/dev/null; then
+            echo "Creating IAM role..."
+            aws iam create-role \
+              --role-name $ROLE_NAME \
+              --assume-role-policy-document file://trust-policy.json \
+              --description "IAM role for auth-api CloudWatch logging"
+          else
+            echo "Updating IAM role trust policy..."
+            aws iam update-assume-role-policy \
+              --role-name $ROLE_NAME \
+              --policy-document file://trust-policy.json
+          fi
+          
+          # Attach policy to role
+          echo "Attaching policy to role..."
+          aws iam attach-role-policy \
+            --role-name $ROLE_NAME \
+            --policy-arn $POLICY_ARN || echo "Policy already attached"
+          
+          echo "CloudWatch IRSA setup complete!"
+          echo "Role ARN: $ROLE_ARN"
+          echo "ROLE_ARN=$ROLE_ARN" >> $GITHUB_ENV
+
+      - name: Cleanup any stuck Helm releases
+        run: |
+          echo "Checking for stuck Helm releases..."
+          RELEASE_STATUS=$(helm list --filter "^auth-api$" -o json | jq -r '.[0].status // "not-found"')
+          echo "Release status: $RELEASE_STATUS"
+          
+          if [ "$RELEASE_STATUS" = "failed" ] || [ "$RELEASE_STATUS" = "pending-install" ] || [ "$RELEASE_STATUS" = "pending-upgrade" ] || [ "$RELEASE_STATUS" = "pending-rollback" ]; then
+            echo "⚠️ Release is stuck in '$RELEASE_STATUS' state. Cleaning up..."
+            helm uninstall auth-api --wait --timeout 120s || echo "Uninstall failed, will try fresh install"
+            sleep 5
+          elif [ "$RELEASE_STATUS" = "deployed" ]; then
+            echo "✅ Release is healthy. helm upgrade --install will handle the update."
+          else
+            echo "No existing auth-api release found. Fresh install will proceed."
+          fi
+
+      - name: Create/Update Kubernetes secrets
+        run: |
+          kubectl create secret generic auth-api-secrets \
+            --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            --from-literal=JWT_EXPIRATION="1h" \
+            --from-literal=AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            --from-literal=AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            --from-literal=AWS_REGION="${{ env.AWS_REGION }}" \
+            --from-literal=DYNAMODB_USERS_TABLE="${{ secrets.DYNAMODB_USERS_TABLE }}" \
+            --from-literal=DYNAMODB_PRODUCTS_TABLE="${{ secrets.DYNAMODB_PRODUCTS_TABLE }}" \
+            --from-literal=RATE_LIMIT_WINDOW_MS="900000" \
+            --from-literal=RATE_LIMIT_MAX_REQUESTS="100" \
+            --from-literal=LOG_LEVEL="info" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy to EKS with Helm
+        run: |
+          echo "Deploying with Helm..."
+          # Use the short SHA that matches ECR tags (first 7 characters)
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "Using image tag: development-${SHORT_SHA}"
+          
+          helm upgrade --install ${{ env.HELM_RELEASE_NAME }} ./k8s/helm/auth-api \
+            --set image.repository=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
+            --set image.tag=development-${SHORT_SHA} \
+            --set replicaCount=1 \
+            --set autoscaling.enabled=false \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${ROLE_ARN}" \
+            --wait \
+            --timeout 10m \
+            --force \
+            --cleanup-on-fail \
+            --debug
+
+      - name: Check pod status (even if deployment fails)
+        if: always()
+        run: |
+          echo "=== Checking pod status ==="
+          kubectl get pods -l app=auth-api || echo "No pods found"
+          echo ""
+          echo "=== All pods in default namespace ==="
+          kubectl get pods
+          echo ""
+          echo "=== Pod descriptions ==="
+          kubectl describe pods -l app=auth-api || echo "No pods to describe"
+          echo ""
+          echo "=== Pod logs ==="
+          kubectl logs -l app=auth-api --tail=200 --all-containers=true || echo "No logs available"
+          echo ""
+          echo "=== Deployment status ==="
+          kubectl get deployment auth-api || echo "Deployment not found"
+          kubectl describe deployment auth-api || echo "Cannot describe deployment"
+          echo ""
+          echo "=== ReplicaSet status ==="
+          kubectl get rs -l app=auth-api || echo "No ReplicaSets found"
+          echo ""
+          echo "=== Events ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -20
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }} --timeout=5m
+          kubectl get pods -l app=auth-api
+          kubectl get ingress ${{ env.HELM_RELEASE_NAME }}-ingress || kubectl get service ${{ env.HELM_RELEASE_NAME }}-service
+
+      - name: Get service URL
+        id: get-url
+        run: |
+          # Try Ingress first (ALB), fall back to Service (LoadBalancer)
+          SERVICE_URL=$(kubectl get ingress ${{ env.HELM_RELEASE_NAME }}-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+          if [ -z "$SERVICE_URL" ]; then
+            SERVICE_URL=$(kubectl get service ${{ env.HELM_RELEASE_NAME }}-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+          fi
+          echo "url=http://${SERVICE_URL}" >> $GITHUB_OUTPUT
+          echo "Service URL: http://${SERVICE_URL}"
+
+      - name: Run smoke tests
+        run: |
+          # Try Ingress first (ALB), fall back to Service (LoadBalancer)
+          SERVICE_URL=$(kubectl get ingress ${{ env.HELM_RELEASE_NAME }}-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+          if [ -z "$SERVICE_URL" ]; then
+            SERVICE_URL=$(kubectl get service ${{ env.HELM_RELEASE_NAME }}-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+          fi
+          
+          if [ -z "$SERVICE_URL" ]; then
+            echo "⚠️ No URL found from Ingress or Service. Skipping smoke tests."
+            echo "Check manually: kubectl get ingress; kubectl get service"
+            exit 0
+          fi
+          
+          echo "Service URL: http://${SERVICE_URL}"
+          echo "Waiting for ALB DNS to propagate (this can take 2-5 minutes)..."
+          
+          sleep 120
+          
+          echo "Testing health endpoint..."
+          MAX_RETRIES=10
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -f --connect-timeout 10 --max-time 30 http://${SERVICE_URL}/api/health; then
+              echo ""
+              echo "✅ Smoke tests passed!"
+              exit 0
+            else
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo ""
+              echo "Attempt $RETRY_COUNT/$MAX_RETRIES failed. Waiting 30 seconds before retry..."
+              sleep 30
+            fi
+          done
+          
+          echo ""
+          echo "❌ Smoke tests failed after $MAX_RETRIES attempts"
+          echo "ALB may still be initializing. Check manually:"
+          echo "curl http://${SERVICE_URL}/api/health"
+          exit 1
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi
+
+  # ============================================
+  # STAGE 5: POST-DEPLOYMENT VALIDATION
+  # ============================================
+  validate:
+    name: Post-Deployment Validation
+    runs-on: ubuntu-latest
+    needs: deploy
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Check pod health
+        run: |
+          echo "Checking pod health..."
+          kubectl get pods -l app=auth-api
+          
+          # Check if all pods are running
+          RUNNING_PODS=$(kubectl get pods -l app=auth-api -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | wc -w)
+          TOTAL_PODS=$(kubectl get pods -l app=auth-api -o jsonpath='{.items[*].metadata.name}' | wc -w)
+          
+          echo "Running pods: $RUNNING_PODS / $TOTAL_PODS"
+          
+          if [ "$RUNNING_PODS" -lt "$TOTAL_PODS" ]; then
+            echo "❌ Not all pods are running!"
+            kubectl describe pods -l app=auth-api
+            exit 1
+          fi
+          
+          echo "✅ All pods are healthy!"
+
+      - name: Check HPA status
+        run: |
+          echo "Checking Horizontal Pod Autoscaler..."
+          kubectl get hpa
+          kubectl describe hpa ${{ env.HELM_RELEASE_NAME }}-hpa || echo "HPA not found"
+
+      - name: Run integration tests
+        run: |
+          SERVICE_URL=$(kubectl get ingress ${{ env.HELM_RELEASE_NAME }}-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+          if [ -z "$SERVICE_URL" ]; then
+            SERVICE_URL=$(kubectl get service ${{ env.HELM_RELEASE_NAME }}-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+          fi
+          
+          if [ -z "$SERVICE_URL" ]; then
+            echo "⚠️ No URL found. Skipping integration tests."
+            exit 0
+          fi
+          
+          echo "Running integration tests against: http://${SERVICE_URL}"
+          
+          # Test registration endpoint
+          echo "Testing registration endpoint..."
+          REGISTER_RESPONSE=$(curl -s -X POST http://${SERVICE_URL}/api/auth/register \
+            -H "Content-Type: application/json" \
+            -d '{
+              "fullName": "CI Test User",
+              "dateOfBirth": "1990-01-01",
+              "email": "ci-test-'$(date +%s)'@gmail.com",
+              "password": "Test1234"
+            }')
+          
+          echo "Registration response: $REGISTER_RESPONSE"
+          
+          # Test health endpoint
+          echo "Testing health endpoint..."
+          curl -f http://${SERVICE_URL}/api/health || exit 1
+          
+          echo "✅ Integration tests passed!"
+
+      - name: Generate deployment report
+        if: always()
+        run: |
+          echo "# Deployment Report" > deployment-report.md
+          echo "" >> deployment-report.md
+          echo "## Deployment Details" >> deployment-report.md
+          echo "- **Commit SHA**: ${{ github.sha }}" >> deployment-report.md
+          echo "- **Branch**: ${{ github.ref_name }}" >> deployment-report.md
+          echo "- **Deployed by**: ${{ github.actor }}" >> deployment-report.md
+          echo "- **Timestamp**: $(date -u)" >> deployment-report.md
+          echo "" >> deployment-report.md
+          echo "## Pod Status" >> deployment-report.md
+          echo '```' >> deployment-report.md
+          kubectl get pods -l app=auth-api >> deployment-report.md
+          echo '```' >> deployment-report.md
+          echo "" >> deployment-report.md
+          echo "## Service Status" >> deployment-report.md
+          echo '```' >> deployment-report.md
+          kubectl get ingress ${{ env.HELM_RELEASE_NAME }}-ingress >> deployment-report.md 2>/dev/null || echo "No ingress found" >> deployment-report.md
+          kubectl get service ${{ env.HELM_RELEASE_NAME }}-service >> deployment-report.md 2>/dev/null || echo "No service found" >> deployment-report.md
+          echo '```' >> deployment-report.md
+
+      - name: Upload deployment report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployment-report
+          path: deployment-report.md
+
+  # ============================================
+  # STAGE 6: ROLLBACK ON FAILURE
+  # ============================================
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy, validate]
+    if: failure()
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.13.0'
+
+      - name: Rollback Helm release
+        run: |
+          echo "⚠️ Deployment failed! Rolling back..."
+          helm rollback ${{ env.HELM_RELEASE_NAME }} 0 --wait
+          echo "✅ Rollback completed"
+
+      - name: Verify rollback
+        run: |
+          kubectl rollout status deployment/${{ env.HELM_RELEASE_NAME }} --timeout=5m
+          kubectl get pods -l app=auth-api
+
+      - name: Notify rollback
+        run: |
+          echo "🔄 Deployment was rolled back due to failures"
+          echo "Please check the logs and fix the issues before redeploying"

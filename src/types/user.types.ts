@@ -4,6 +4,7 @@ export interface User {
   dateOfBirth: string;
   email: string;
   password: string;
+  favoriteProducts?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -21,16 +22,19 @@ export interface UserResponseDTO {
   fullName: string;
 }
 
-export interface LoginRequestDTO {
-  email: string;
-  password: string;
+export interface UpdateUserDTO {
+  fullName?: string;
+  dateOfBirth?: string;
 }
 
-export interface ForgotPasswordRequestDTO {
+export interface UserProfileResponseDTO {
+  userId: string;
   email: string;
+  fullName: string;
+  dateOfBirth: string;
+  favoriteProducts?: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface ResetPasswordRequestDTO {
-  token: string;
-  newPassword: string;
-}
+
