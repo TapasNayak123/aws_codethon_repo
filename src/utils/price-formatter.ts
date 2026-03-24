@@ -6,7 +6,7 @@ export function formatPrice(price: number, currency: string = 'USD'): string {
     throw new Error('Price cannot be negative');
   }
   
-  const currencySymbols = {
+  const currencySymbols: Record<string, string> = {
     'USD': '$',
     'EUR': '€',
     'GBP': '£'
