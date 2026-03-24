@@ -4,6 +4,7 @@ export interface User {
   dateOfBirth: string;
   email: string;
   password: string;
+  productRatings?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
 }

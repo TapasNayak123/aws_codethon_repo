@@ -48,3 +48,52 @@ export async function authenticateUser(
     },
   };
 }
+
+/**
+ * Rate a product
+ */
+export async function rateProduct(
+  userId: string,
+  productId: string,
+  rating: number,
+  log: RequestLogger
+): Promise<void> {
+  log.info('RATE_PRODUCT_START', { phase: 'service', userId, productId, rating });
+
+  if (rating < 1 || rating > 5) {
+    log.warn('RATE_PRODUCT_INVALID_RATING', { phase: 'service', rating });
+    throw new ValidationError('Rating must be between 1 and 5');
+  }
+
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    log.warn('RATE_PRODUCT_USER_NOT_FOUND', { phase: 'service', userId });
+    throw new NotFoundError('User not found');
+  }
+
+  await UserModel.rateProduct(userId, productId, rating);
+
+  log.info('RATE_PRODUCT_SUCCESS', { phase: 'service', userId, productId, rating });
+}
+
+/**
+ * Get user's product ratings
+ */
+export async function getUserRatings(
+  userId: string,
+  log: RequestLogger
+): Promise<Record<string, number>> {
+  log.info('GET_RATINGS_START', { phase: 'service', userId });
+
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    log.warn('GET_RATINGS_USER_NOT_FOUND', { phase: 'service', userId });
+    throw new NotFoundError('User not found');
+  }
+
+  const ratings = await UserModel.getUserRatings(userId);
+
+  log.info('GET_RATINGS_SUCCESS', { phase: 'service', userId, count: Object.keys(ratings).length });
+
+  return ratings;
+}

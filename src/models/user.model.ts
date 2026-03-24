@@ -109,3 +109,34 @@ export async function emailExists(email: string): Promise<boolean> {
   const user = await findByEmail(email);
   return user !== null;
 }
+
+/**
+ * Rate a product
+ */
+export async function rateProduct(userId: string, productId: string, rating: number): Promise<void> {
+  const command = new UpdateCommand({
+    TableName: config.dynamodb.usersTable,
+    Key: { userId },
+    UpdateExpression: 'SET productRatings.#productId = :rating, updatedAt = :updatedAt',
+    ExpressionAttributeNames: {
+      '#productId': productId,
+    },
+    ExpressionAttributeValues: {
+      ':rating': rating,
+      ':updatedAt': new Date().toISOString(),
+    },
+  });
+
+  await dynamoDB.send(command);
+}
+
+/**
+ * Get user's product ratings
+ */
+export async function getUserRatings(userId: string): Promise<Record<string, number>> {
+  const user = await findById(userId);
+  if (!user || !user.productRatings) {
+    return {};
+  }
+  return user.productRatings;
+}
