@@ -32,6 +32,7 @@ export async function createProduct(
     for (const productData of productsData) {
       const product = await ProductService.createProduct({
         productName: productData.productName,
+        category: productData.category,
         price: productData.price,
         availableQuantity: productData.availableQuantity,
         description: productData.description,

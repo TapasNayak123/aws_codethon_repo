@@ -145,7 +145,7 @@ export async function addFavoriteProduct(userId: string, productId: string): Pro
     Key: { userId },
     UpdateExpression: 'ADD favoriteProducts :productId SET updatedAt = :updatedAt',
     ExpressionAttributeValues: {
-      ':productId': dynamoDB.createSet([productId]),
+      ':productId': new Set([productId]),
       ':updatedAt': new Date().toISOString(),
     },
   });
@@ -162,7 +162,7 @@ export async function removeFavoriteProduct(userId: string, productId: string): 
     Key: { userId },
     UpdateExpression: 'DELETE favoriteProducts :productId SET updatedAt = :updatedAt',
     ExpressionAttributeValues: {
-      ':productId': dynamoDB.createSet([productId]),
+      ':productId': new Set([productId]),
       ':updatedAt': new Date().toISOString(),
     },
   });

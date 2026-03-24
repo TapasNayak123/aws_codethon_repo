@@ -2,6 +2,7 @@ import { JSONSchemaType } from 'ajv';
 
 interface CreateProductBody {
   productName: string;
+  category: string;
   price: number;
   availableQuantity: number;
   description: string;
@@ -10,6 +11,7 @@ interface CreateProductBody {
 
 interface UpdateProductBody {
   productName?: string;
+  category?: string;
   price?: number;
   availableQuantity?: number;
   description?: string;
@@ -18,6 +20,7 @@ interface UpdateProductBody {
 
 interface SearchProductsQuery {
   q?: string;
+  category?: string;
   minPrice?: string;
   maxPrice?: string;
   page?: string;
@@ -28,6 +31,7 @@ interface SearchProductsQuery {
 
 const productProperties = {
   productName: { type: 'string' as const, minLength: 2, maxLength: 100, pattern: '^[a-zA-Z0-9\\s\\-&\',.()]+$' },
+  category: { type: 'string' as const, enum: ['Electronics', 'Clothing', 'Food', 'Books', 'Home', 'Sports', 'Other'] },
   price: { type: 'number' as const, minimum: 0.01, maximum: 999999.99 },
   availableQuantity: { type: 'integer' as const, minimum: 0, maximum: 1000000 },
   description: { type: 'string' as const, minLength: 10, maxLength: 1000 },
@@ -39,7 +43,7 @@ export const createProductSchema: JSONSchemaType<CreateProductBody | CreateProdu
     {
       type: 'object',
       properties: productProperties,
-      required: ['productName', 'price', 'availableQuantity', 'description', 'imageUrl'],
+      required: ['productName', 'category', 'price', 'availableQuantity', 'description', 'imageUrl'],
       additionalProperties: false,
     },
     {
@@ -47,7 +51,7 @@ export const createProductSchema: JSONSchemaType<CreateProductBody | CreateProdu
       items: {
         type: 'object',
         properties: productProperties,
-        required: ['productName', 'price', 'availableQuantity', 'description', 'imageUrl'],
+        required: ['productName', 'category', 'price', 'availableQuantity', 'description', 'imageUrl'],
         additionalProperties: false,
       },
       minItems: 1,
@@ -60,6 +64,7 @@ export const updateProductSchema: JSONSchemaType<UpdateProductBody> = {
   type: 'object',
   properties: {
     productName: { type: 'string', minLength: 2, maxLength: 100, pattern: '^[a-zA-Z0-9\\s\\-&\',.()]+$', nullable: true },
+    category: { type: 'string', enum: ['Electronics', 'Clothing', 'Food', 'Books', 'Home', 'Sports', 'Other'], nullable: true },
     price: { type: 'number', minimum: 0.01, maximum: 999999.99, nullable: true },
     availableQuantity: { type: 'integer', minimum: 0, maximum: 1000000, nullable: true },
     description: { type: 'string', minLength: 10, maxLength: 1000, nullable: true },
@@ -74,6 +79,7 @@ export const searchProductsSchema: JSONSchemaType<SearchProductsQuery> = {
   type: 'object',
   properties: {
     q: { type: 'string', maxLength: 200, nullable: true },
+    category: { type: 'string', enum: ['Electronics', 'Clothing', 'Food', 'Books', 'Home', 'Sports', 'Other'], nullable: true },
     minPrice: { type: 'string', pattern: '^\\d+(\\.\\d{1,2})?$', nullable: true },
     maxPrice: { type: 'string', pattern: '^\\d+(\\.\\d{1,2})?$', nullable: true },
     page: { type: 'string', pattern: '^[1-9]\\d*$', nullable: true },
