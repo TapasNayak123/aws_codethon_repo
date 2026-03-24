@@ -4,6 +4,7 @@ export interface User {
   dateOfBirth: string;
   email: string;
   password: string;
+  favoriteProducts?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -31,6 +32,7 @@ export interface UserProfileResponseDTO {
   email: string;
   fullName: string;
   dateOfBirth: string;
+  favoriteProducts?: string[];
   createdAt: string;
   updatedAt: string;
 }
