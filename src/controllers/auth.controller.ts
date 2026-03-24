@@ -148,3 +148,108 @@ export async function updateProfile(
     next(error);
   }
 }
+
+/**
+ * Add product to favorites
+ * POST /api/auth/favorites/:productId
+ */
+export async function addFavorite(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
+  const user = (req as any).user;
+
+  try {
+    const { productId } = req.params;
+
+    log.info('ADD_FAVORITE_START', { phase: 'controller', userId: user.userId, productId });
+
+    await UserService.addFavoriteProduct(user.userId, productId, log);
+
+    log.info('ADD_FAVORITE_SUCCESS', { phase: 'controller', userId: user.userId, productId });
+
+    res.status(200).json(
+      successResponse('Product added to favorites', { productId }, requestId)
+    );
+  } catch (error) {
+    log.error('ADD_FAVORITE_FAILED', {
+      phase: 'controller',
+      userId: user.userId,
+      productId: req.params.productId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}
+
+/**
+ * Remove product from favorites
+ * DELETE /api/auth/favorites/:productId
+ */
+export async function removeFavorite(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
+  const user = (req as any).user;
+
+  try {
+    const { productId } = req.params;
+
+    log.info('REMOVE_FAVORITE_START', { phase: 'controller', userId: user.userId, productId });
+
+    await UserService.removeFavoriteProduct(user.userId, productId, log);
+
+    log.info('REMOVE_FAVORITE_SUCCESS', { phase: 'controller', userId: user.userId, productId });
+
+    res.status(200).json(
+      successResponse('Product removed from favorites', { productId }, requestId)
+    );
+  } catch (error) {
+    log.error('REMOVE_FAVORITE_FAILED', {
+      phase: 'controller',
+      userId: user.userId,
+      productId: req.params.productId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}
+
+/**
+ * Get user's favorite products
+ * GET /api/auth/favorites
+ */
+export async function getFavorites(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
+  const user = (req as any).user;
+
+  try {
+    log.info('GET_FAVORITES_START', { phase: 'controller', userId: user.userId });
+
+    const favoriteIds = await UserService.getFavoriteProducts(user.userId, log);
+
+    log.info('GET_FAVORITES_SUCCESS', { phase: 'controller', userId: user.userId, count: favoriteIds.length });
+
+    res.status(200).json(
+      successResponse('Favorites retrieved successfully', { favoriteProducts: favoriteIds }, requestId)
+    );
+  } catch (error) {
+    log.error('GET_FAVORITES_FAILED', {
+      phase: 'controller',
+      userId: user.userId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+}

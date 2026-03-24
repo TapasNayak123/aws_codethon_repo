@@ -182,3 +182,67 @@ export async function updateUserProfile(
     updatedAt: updated.updatedAt,
   };
 }
+
+/**
+ * Add product to user's favorites
+ */
+export async function addFavoriteProduct(
+  userId: string,
+  productId: string,
+  log: RequestLogger
+): Promise<void> {
+  log.info('ADD_FAVORITE_START', { phase: 'service', userId, productId });
+
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    log.warn('ADD_FAVORITE_USER_NOT_FOUND', { phase: 'service', userId });
+    throw new NotFoundError('User not found');
+  }
+
+  await UserModel.addFavoriteProduct(userId, productId);
+
+  log.info('ADD_FAVORITE_SUCCESS', { phase: 'service', userId, productId });
+}
+
+/**
+ * Remove product from user's favorites
+ */
+export async function removeFavoriteProduct(
+  userId: string,
+  productId: string,
+  log: RequestLogger
+): Promise<void> {
+  log.info('REMOVE_FAVORITE_START', { phase: 'service', userId, productId });
+
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    log.warn('REMOVE_FAVORITE_USER_NOT_FOUND', { phase: 'service', userId });
+    throw new NotFoundError('User not found');
+  }
+
+  await UserModel.removeFavoriteProduct(userId, productId);
+
+  log.info('REMOVE_FAVORITE_SUCCESS', { phase: 'service', userId, productId });
+}
+
+/**
+ * Get user's favorite products
+ */
+export async function getFavoriteProducts(
+  userId: string,
+  log: RequestLogger
+): Promise<string[]> {
+  log.info('GET_FAVORITES_START', { phase: 'service', userId });
+
+  const user = await UserModel.findById(userId);
+  if (!user) {
+    log.warn('GET_FAVORITES_USER_NOT_FOUND', { phase: 'service', userId });
+    throw new NotFoundError('User not found');
+  }
+
+  const favorites = await UserModel.getFavoriteProducts(userId);
+
+  log.info('GET_FAVORITES_SUCCESS', { phase: 'service', userId, count: favorites.length });
+
+  return favorites;
+}
