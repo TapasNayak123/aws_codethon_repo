@@ -20,6 +20,7 @@ export async function create(productData: CreateProductDTO): Promise<Product> {
   const product: Product = {
     productId,
     productName: productData.productName,
+    category: productData.category,
     price: productData.price,
     availableQuantity: productData.availableQuantity,
     description: productData.description,
@@ -90,6 +91,10 @@ export async function update(productId: string, updateData: UpdateProductDTO): P
   if (updateData.productName !== undefined) {
     updateExpressions.push('productName = :productName');
     expressionValues[':productName'] = updateData.productName;
+  }
+  if (updateData.category !== undefined) {
+    updateExpressions.push('category = :category');
+    expressionValues[':category'] = updateData.category;
   }
   if (updateData.price !== undefined) {
     updateExpressions.push('price = :price');
