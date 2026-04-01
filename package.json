@@ -55,7 +55,7 @@
     "@types/supertest": "^7.2.0",
     "@types/uuid": "^9.0.8",
     "@vitest/coverage-v8": "^4.0.18",
-    "supertest": "^6.3.4",
+    "supertest": "^7.2.2",
     "tsx": "^4.7.1",
     "typescript": "^5.4.2",
     "vitest": "^4.0.18"
