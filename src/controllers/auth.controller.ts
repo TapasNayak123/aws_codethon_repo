@@ -253,3 +253,34 @@ export async function getFavorites(
     next(error);
   }
 }
+
+export async function addToCart(  req: Request,
+  res: Response,
+  next: NextFunction): Promise<void> {
+  const log = getLog(req);
+  const requestId = (req as any).requestId;
+  const user = (req as any).user;
+
+  try {
+    const { productId, quantity } = req.body;
+
+    log.info('ADD_TO_CART_START', { phase: 'controller', userId: user.userId, productId, quantity });
+
+    await UserService.addToCart(user.userId, productId, quantity, log);
+
+    log.info('ADD_TO_CART_SUCCESS', { phase: 'controller', userId: user.userId, productId, quantity });
+
+    res.status(200).json(
+      successResponse('Product added to cart', { productId, quantity }, requestId)
+    );
+  } catch (error) {
+    log.error('ADD_TO_CART_FAILED', {
+      phase: 'controller',
+      userId: user.userId,
+      productId: req.body.productId,
+      quantity: req.body.quantity,
+      error: error instanceof       Error ? error.message : 'Unknown error',
+    });
+    next(error);
+  }
+} 

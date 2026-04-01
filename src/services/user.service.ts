@@ -246,3 +246,7 @@ export async function getFavoriteProducts(
 
   return favorites;
 }
+
+export function addToCart(userId: any, productId: any, quantity: any, log: RequestLogger) {
+  throw new Error('Function not implemented.');
+}
