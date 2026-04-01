@@ -22,6 +22,7 @@ export async function create(userData: CreateUserDTO & { password: string }): Pr
     dateOfBirth: userData.dateOfBirth,
     email: userData.email.toLowerCase(),
     password: userData.password,
+    favoriteProducts: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -133,4 +134,49 @@ export async function updateProfile(userId: string, updateData: UpdateUserDTO): 
   });
 
   await dynamoDB.send(command);
+}
+
+/**
+ * Add product to user's favorites
+ */
+export async function addFavoriteProduct(userId: string, productId: string): Promise<void> {
+  const command = new UpdateCommand({
+    TableName: config.dynamodb.usersTable,
+    Key: { userId },
+    UpdateExpression: 'ADD favoriteProducts :productId SET updatedAt = :updatedAt',
+    ExpressionAttributeValues: {
+      ':productId': new Set([productId]),
+      ':updatedAt': new Date().toISOString(),
+    },
+  });
+
+  await dynamoDB.send(command);
+}
+
+/**
+ * Remove product from user's favorites
+ */
+export async function removeFavoriteProduct(userId: string, productId: string): Promise<void> {
+  const command = new UpdateCommand({
+    TableName: config.dynamodb.usersTable,
+    Key: { userId },
+    UpdateExpression: 'DELETE favoriteProducts :productId SET updatedAt = :updatedAt',
+    ExpressionAttributeValues: {
+      ':productId': new Set([productId]),
+      ':updatedAt': new Date().toISOString(),
+    },
+  });
+
+  await dynamoDB.send(command);
+}
+
+/**
+ * Get user's favorite products
+ */
+export async function getFavoriteProducts(userId: string): Promise<string[]> {
+  const user = await findById(userId);
+  if (!user || !user.favoriteProducts) {
+    return [];
+  }
+  return user.favoriteProducts;
 }

@@ -30,6 +30,7 @@ export async function createProduct(
   return {
     productId: product.productId,
     productName: product.productName,
+    category: product.category,
     price: product.price,
     availableQuantity: product.availableQuantity,
     description: product.description,
@@ -52,6 +53,7 @@ export async function getAllProducts(log: RequestLogger): Promise<ProductRespons
   return products.map((product) => ({
     productId: product.productId,
     productName: product.productName,
+    category: product.category,
     price: product.price,
     availableQuantity: product.availableQuantity,
     description: product.description,
@@ -79,6 +81,7 @@ export async function getProductById(productId: string, log: RequestLogger): Pro
   return {
     productId: product.productId,
     productName: product.productName,
+    category: product.category,
     price: product.price,
     availableQuantity: product.availableQuantity,
     description: product.description,
@@ -126,6 +129,7 @@ export async function updateProduct(
   return {
     productId: updated.productId,
     productName: updated.productName,
+    category: updated.category,
     price: updated.price,
     availableQuantity: updated.availableQuantity,
     description: updated.description,
@@ -152,6 +156,7 @@ export async function deleteProduct(productId: string, log: RequestLogger): Prom
   return {
     productId: deleted.productId,
     productName: deleted.productName,
+    category: deleted.category,
     price: deleted.price,
     availableQuantity: deleted.availableQuantity,
     description: deleted.description,
@@ -234,6 +239,7 @@ export async function searchProducts(
     products: paginatedProducts.map((p) => ({
       productId: p.productId,
       productName: p.productName,
+      category: p.category,
       price: p.price,
       availableQuantity: p.availableQuantity,
       description: p.description,
