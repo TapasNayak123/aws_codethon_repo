@@ -26,6 +26,7 @@ env:
   ECS_SERVICE_NAME: auth-api-poc-service
   ECS_TASK_FAMILY: auth-api-poc-task
   CONTAINER_NAME: auth-api
+  DEPLOYMENT_WEBHOOK_URL: ${{ vars.ECS_DEPLOYMENT_WEBHOOK_URL }}
   NODE_VERSION: '22.x'
 
 jobs:
@@ -420,6 +421,21 @@ jobs:
           done
           echo "Smoke tests failed after $MAX_RETRIES attempts"
           exit 1
+
+      - name: Notify deployment webhook
+        if: always()
+        run: |
+          SERVICE_URL="${{ steps.get-url.outputs.url }}"
+
+          if [ "${{ job.status }}" == "success" ]; then
+            STATUS="success"
+          else
+            STATUS="failed"
+          fi
+
+          curl -X POST "${{ env.DEPLOYMENT_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"platform\":\"ecs\",\"status\":\"${STATUS}\",\"serviceUrl\":\"${SERVICE_URL}\",\"workflow\":\"${{ github.workflow }}\",\"runId\":\"${{ github.run_id }}\"}" || echo "Webhook notification failed"
 
   # ============================================
   # STAGE 5: POST-DEPLOYMENT VALIDATION
