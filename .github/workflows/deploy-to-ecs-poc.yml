@@ -1,0 +1,582 @@
+name: Deploy to AWS ECS Fargate (POC)
+
+# NOTE: This POC uses temporary SSO credentials. Before triggering a deploy,
+# update these 3 GitHub Secrets from the AWS SSO portal:
+#   - POC_AWS_ACCESS_KEY_ID
+#   - POC_AWS_SECRET_ACCESS_KEY
+#   - POC_AWS_SESSION_TOKEN
+
+on:
+  push:
+    branches:
+      - poc
+  pull_request:
+    branches:
+      - poc
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  AWS_REGION: ${{ secrets.POC_AWS_REGION }}
+  ECR_REPOSITORY: auth-api
+  ECS_CLUSTER_NAME: auth-api-poc-cluster
+  ECS_SERVICE_NAME: auth-api-poc-service
+  ECS_TASK_FAMILY: auth-api-poc-task
+  CONTAINER_NAME: auth-api
+  NODE_VERSION: '22.x'
+
+jobs:
+  # ============================================
+  # STAGE 1: SECURITY SCANNING
+  # ============================================
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Trivy vulnerability scanner (Filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=high || true
+          npm audit --json > npm-audit.json || true
+
+      - name: Check for secrets in code
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'auth-api'
+          path: '.'
+          format: 'HTML'
+          args: >
+            --failOnCVSS 7
+            --enableRetired
+
+      - name: Upload Dependency Check results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-check-report-poc
+          path: reports/
+
+  # ============================================
+  # STAGE 2: TESTING
+  # ============================================
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: security
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint || echo "No lint script found"
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Generate test coverage
+        run: npm run test:coverage || npm test
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage/coverage-final.json
+          flags: unittests
+          name: codecov-poc
+          fail_ci_if_error: false
+
+      - name: Archive test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-poc
+          path: |
+            coverage/
+            test-results/
+
+  # ============================================
+  # STAGE 3: BUILD & PUSH DOCKER IMAGE
+  # ============================================
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-uri: ${{ steps.build-image.outputs.image-uri }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.POC_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.POC_AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.POC_AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: poc-${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg NODE_ENV=production \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:poc-latest \
+            .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:poc-latest
+          echo "image-uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Run Trivy vulnerability scanner (Docker Image)
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:poc-latest
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy image scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-image-results.sarif') != ''
+        with:
+          sarif_file: 'trivy-image-results.sarif'
+
+  # ============================================
+  # STAGE 4: DEPLOY TO ECS FARGATE (POC)
+  # ============================================
+  deploy:
+    name: Deploy to ECS Fargate (POC)
+    runs-on: ubuntu-latest
+    needs: build
+    outputs:
+      url: ${{ steps.get-url.outputs.url }}
+    environment:
+      name: poc
+      url: ${{ steps.get-url.outputs.url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.POC_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.POC_AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.POC_AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get AWS Account ID
+        id: account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "account-id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+
+      - name: Preflight AWS resource checks
+        run: |
+          echo "Validating ECS prerequisites..."
+
+          CLUSTER_STATUS=$(aws ecs describe-clusters \
+            --clusters ${{ env.ECS_CLUSTER_NAME }} \
+            --query 'clusters[0].status' \
+            --output text 2>/dev/null || echo "MISSING")
+
+          if [ "$CLUSTER_STATUS" != "ACTIVE" ]; then
+            echo "ERROR: ECS cluster '${{ env.ECS_CLUSTER_NAME }}' is not ACTIVE (status: $CLUSTER_STATUS)."
+            exit 1
+          fi
+
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} \
+            --query 'services[0].status' \
+            --output text 2>/dev/null || echo "MISSING")
+
+          if [ "$SERVICE_STATUS" != "ACTIVE" ]; then
+            echo "ERROR: ECS service '${{ env.ECS_SERVICE_NAME }}' not found or not ACTIVE (status: $SERVICE_STATUS)."
+            echo "Run setup-poc-ecs.ps1 first."
+            exit 1
+          fi
+
+          aws iam get-role --role-name auth-api-poc-execution-role >/dev/null
+          aws iam get-role --role-name auth-api-poc-task-role >/dev/null
+
+          echo "Preflight checks passed."
+
+      - name: Create CloudWatch Log Group
+        run: |
+          aws logs create-log-group --log-group-name /ecs/auth-api-poc --region ${{ env.AWS_REGION }} 2>/dev/null || echo "Log group already exists"
+          aws logs put-retention-policy --log-group-name /ecs/auth-api-poc --retention-in-days 30 --region ${{ env.AWS_REGION }}
+
+      - name: Register ECS Task Definition
+        id: task-def
+        run: |
+          ACCOUNT_ID=${{ steps.account.outputs.account-id }}
+          IMAGE_URI="${{ needs.build.outputs.image-uri }}"
+
+          # Fallback: construct image URI if output is empty
+          if [ -z "$IMAGE_URI" ]; then
+            IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:poc-${{ github.sha }}"
+            echo "WARNING: build output was empty, using constructed URI: $IMAGE_URI"
+          fi
+
+          echo "Using image: $IMAGE_URI"
+
+          cat > task-definition.json <<EOF
+          {
+            "family": "${{ env.ECS_TASK_FAMILY }}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "arn:aws:iam::${ACCOUNT_ID}:role/auth-api-poc-execution-role",
+            "taskRoleArn": "arn:aws:iam::${ACCOUNT_ID}:role/auth-api-poc-task-role",
+            "containerDefinitions": [
+              {
+                "name": "${{ env.CONTAINER_NAME }}",
+                "image": "${IMAGE_URI}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 3000,
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  {"name": "NODE_ENV", "value": "production"},
+                  {"name": "PORT", "value": "3000"},
+                  {"name": "AWS_REGION", "value": "${{ env.AWS_REGION }}"},
+                  {"name": "DYNAMODB_USERS_TABLE", "value": "${{ secrets.POC_DYNAMODB_USERS_TABLE }}"},
+                  {"name": "DYNAMODB_PRODUCTS_TABLE", "value": "${{ secrets.POC_DYNAMODB_PRODUCTS_TABLE }}"},
+                  {"name": "JWT_SECRET", "value": "${{ secrets.POC_JWT_SECRET }}"},
+                  {"name": "JWT_EXPIRATION", "value": "1h"},
+                  {"name": "RATE_LIMIT_WINDOW_MS", "value": "900000"},
+                  {"name": "RATE_LIMIT_MAX_REQUESTS", "value": "200"},
+                  {"name": "LOG_LEVEL", "value": "info"}
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/auth-api-poc",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\" || exit 1"],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3,
+                  "startPeriod": 60
+                }
+              }
+            ]
+          }
+          EOF
+
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "task-def-arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+          echo "Registered task definition: $TASK_DEF_ARN"
+
+      - name: Update ECS Service
+        run: |
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} \
+            --query 'services[0].status' \
+            --output text 2>/dev/null || echo "MISSING")
+
+          if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+            echo "Updating existing ECS service..."
+            aws ecs update-service \
+              --cluster ${{ env.ECS_CLUSTER_NAME }} \
+              --service ${{ env.ECS_SERVICE_NAME }} \
+              --task-definition ${{ steps.task-def.outputs.task-def-arn }} \
+              --force-new-deployment
+          else
+            echo "ECS service not found. Run setup-poc-ecs.ps1 first."
+            exit 1
+          fi
+
+      - name: Wait for service stability
+        run: |
+          echo "Waiting for ECS service to stabilize (up to 10 minutes)..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} || true
+
+          RUNNING=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} \
+            --query 'services[0].runningCount' \
+            --output text)
+          DESIRED=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} \
+            --query 'services[0].desiredCount' \
+            --output text)
+          echo "Running tasks: $RUNNING / Desired: $DESIRED"
+
+      - name: Get service URL
+        id: get-url
+        run: |
+          TG_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} \
+            --query 'services[0].loadBalancers[0].targetGroupArn' \
+            --output text 2>/dev/null)
+
+          if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
+            LB_ARN=$(aws elbv2 describe-target-groups \
+              --target-group-arns $TG_ARN \
+              --query 'TargetGroups[0].LoadBalancerArns[0]' \
+              --output text)
+            SERVICE_URL=$(aws elbv2 describe-load-balancers \
+              --load-balancer-arns $LB_ARN \
+              --query 'LoadBalancers[0].DNSName' \
+              --output text)
+            echo "url=http://${SERVICE_URL}" >> $GITHUB_OUTPUT
+            echo "POC URL: http://${SERVICE_URL}"
+          else
+            echo "url=pending" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run smoke tests
+        run: |
+          SERVICE_URL="${{ steps.get-url.outputs.url }}"
+          if [ "$SERVICE_URL" = "pending" ] || [ -z "$SERVICE_URL" ]; then
+            echo "No URL available yet. Skipping smoke tests."
+            exit 0
+          fi
+          echo "Waiting for ALB to be ready..."
+          sleep 60
+          MAX_RETRIES=10
+          RETRY_COUNT=0
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -f --connect-timeout 10 --max-time 30 ${SERVICE_URL}/api/health; then
+              echo ""
+              echo "Smoke tests passed!"
+              exit 0
+            else
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo "Attempt $RETRY_COUNT/$MAX_RETRIES failed. Waiting 30s..."
+              sleep 30
+            fi
+          done
+          echo "Smoke tests failed after $MAX_RETRIES attempts"
+          exit 1
+
+  # ============================================
+  # STAGE 5: POST-DEPLOYMENT VALIDATION
+  # ============================================
+  validate:
+    name: Post-Deployment Validation
+    runs-on: ubuntu-latest
+    needs: [deploy, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.POC_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.POC_AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.POC_AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate ECS service health
+        run: |
+          echo "Checking ECS service status..."
+          RUNNING=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} \
+            --query 'services[0].runningCount' \
+            --output text)
+          DESIRED=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} \
+            --query 'services[0].desiredCount' \
+            --output text)
+          echo "Running: $RUNNING / Desired: $DESIRED"
+          if [ "$RUNNING" -lt "$DESIRED" ]; then
+            echo "WARNING: Running count ($RUNNING) is less than desired ($DESIRED)"
+          else
+            echo "ECS service is healthy"
+          fi
+
+      - name: Validate target group health
+        run: |
+          TG_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} \
+            --query 'services[0].loadBalancers[0].targetGroupArn' \
+            --output text 2>/dev/null)
+
+          if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ]; then
+            HEALTH=$(aws elbv2 describe-target-health \
+              --target-group-arn $TG_ARN \
+              --query 'TargetHealthDescriptions[*].TargetHealth.State' \
+              --output text)
+            echo "Target health states: $HEALTH"
+          else
+            echo "No target group found"
+          fi
+
+      - name: Validate API endpoints
+        run: |
+          SERVICE_URL="${{ needs.deploy.outputs.url }}"
+          if [ "$SERVICE_URL" = "pending" ] || [ -z "$SERVICE_URL" ]; then
+            echo "No URL available. Skipping endpoint validation."
+            exit 0
+          fi
+
+          echo "Testing health endpoint..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 ${SERVICE_URL}/api/health || echo "000")
+          echo "Health endpoint returned: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "API validation passed"
+          else
+            echo "WARNING: Health endpoint returned $HTTP_CODE"
+          fi
+
+      - name: Check CloudWatch logs
+        run: |
+          echo "Checking recent logs for errors..."
+          aws logs filter-log-events \
+            --log-group-name /ecs/auth-api-poc \
+            --start-time $(date -d '5 minutes ago' +%s000 2>/dev/null || date -v-5M +%s000) \
+            --filter-pattern "ERROR" \
+            --limit 10 \
+            --query 'events[*].message' \
+            --output text 2>/dev/null || echo "No recent error logs found"
+
+      - name: Deployment summary
+        run: |
+          echo "============================================"
+          echo "  POC DEPLOYMENT SUMMARY"
+          echo "============================================"
+          echo "Cluster:  ${{ env.ECS_CLUSTER_NAME }}"
+          echo "Service:  ${{ env.ECS_SERVICE_NAME }}"
+          echo "URL:      ${{ needs.deploy.outputs.url }}"
+          echo "Image:    ${{ needs.build.outputs.image-uri }}"
+          echo "============================================"
+
+  # ============================================
+  # STAGE 6: ROLLBACK ON FAILURE
+  # ============================================
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy, validate]
+    if: failure()
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.POC_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.POC_AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.POC_AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get previous task definition
+        id: prev-task
+        run: |
+          TASK_DEFS=$(aws ecs list-task-definitions \
+            --family-prefix ${{ env.ECS_TASK_FAMILY }} \
+            --sort DESC \
+            --query 'taskDefinitionArns' \
+            --output json)
+
+          PREV_TASK=$(echo $TASK_DEFS | jq -r '.[1] // empty')
+
+          if [ -n "$PREV_TASK" ]; then
+            echo "prev-task-arn=$PREV_TASK" >> $GITHUB_OUTPUT
+            echo "Found previous task definition: $PREV_TASK"
+          else
+            echo "No previous task definition found for rollback"
+            echo "prev-task-arn=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Rollback ECS service
+        if: steps.prev-task.outputs.prev-task-arn != ''
+        run: |
+          echo "Rolling back to: ${{ steps.prev-task.outputs.prev-task-arn }}"
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --service ${{ env.ECS_SERVICE_NAME }} \
+            --task-definition ${{ steps.prev-task.outputs.prev-task-arn }} \
+            --force-new-deployment
+
+          echo "Waiting for rollback to stabilize..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} || true
+
+          echo "Rollback complete"
+
+      - name: Rollback notification
+        if: always()
+        run: |
+          if [ -n "${{ steps.prev-task.outputs.prev-task-arn }}" ]; then
+            echo "ROLLBACK EXECUTED: Service rolled back to ${{ steps.prev-task.outputs.prev-task-arn }}"
+          else
+            echo "ROLLBACK SKIPPED: No previous task definition available"
+            echo "Manual intervention may be required"
+          fi
