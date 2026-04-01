@@ -192,6 +192,8 @@ jobs:
     name: Deploy to ECS Fargate (POC)
     runs-on: ubuntu-latest
     needs: build
+    outputs:
+      url: ${{ steps.get-url.outputs.url }}
     environment:
       name: poc
       url: ${{ steps.get-url.outputs.url }}
@@ -212,6 +214,37 @@ jobs:
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           echo "account-id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+
+      - name: Preflight AWS resource checks
+        run: |
+          echo "Validating ECS prerequisites..."
+
+          CLUSTER_STATUS=$(aws ecs describe-clusters \
+            --clusters ${{ env.ECS_CLUSTER_NAME }} \
+            --query 'clusters[0].status' \
+            --output text 2>/dev/null || echo "MISSING")
+
+          if [ "$CLUSTER_STATUS" != "ACTIVE" ]; then
+            echo "ERROR: ECS cluster '${{ env.ECS_CLUSTER_NAME }}' is not ACTIVE (status: $CLUSTER_STATUS)."
+            exit 1
+          fi
+
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER_NAME }} \
+            --services ${{ env.ECS_SERVICE_NAME }} \
+            --query 'services[0].status' \
+            --output text 2>/dev/null || echo "MISSING")
+
+          if [ "$SERVICE_STATUS" != "ACTIVE" ]; then
+            echo "ERROR: ECS service '${{ env.ECS_SERVICE_NAME }}' not found or not ACTIVE (status: $SERVICE_STATUS)."
+            echo "Run setup-poc-ecs.ps1 first."
+            exit 1
+          fi
+
+          aws iam get-role --role-name auth-api-poc-execution-role >/dev/null
+          aws iam get-role --role-name auth-api-poc-task-role >/dev/null
+
+          echo "Preflight checks passed."
 
       - name: Create CloudWatch Log Group
         run: |
@@ -385,7 +418,7 @@ jobs:
   validate:
     name: Post-Deployment Validation
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: [deploy, build]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
