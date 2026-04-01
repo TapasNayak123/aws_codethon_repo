@@ -2,9 +2,7 @@
  * Handle promotional pricing and discounts
  */
 
-// ERROR: Missing import for calculateDiscount function
-// import { calculateDiscount } from '../utils/discount-calculator';
-
+import { calculateDiscount } from '../utils/discount-calculator';
 import { RequestLogger } from '../utils/logger';
 
 export interface Promotion {
