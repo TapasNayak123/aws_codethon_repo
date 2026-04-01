@@ -63,5 +63,9 @@
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
+  },
+  "overrides": {
+    "path-to-regexp": "0.1.13",
+    "picomatch": "4.0.4"
   }
 }
