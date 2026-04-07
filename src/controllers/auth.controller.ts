@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as UserService from '../services/user.service';
 import * as TokenService from '../services/token.service';
-import { successResponse } from '../utils/response-formatter';
+import { successResponse } from '../utils/response-formatterr';
 import { RequestLogger } from '../utils/logger';
 
 /**
